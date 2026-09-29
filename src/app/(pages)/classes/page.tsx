@@ -19,33 +19,8 @@ type Student = {
   className: string;
 };
 
-const initialClasses: ClassItem[] = [
-  { id: 1, name: "5P", studentsCount: 10, teacher: "Jan Kowalski" },
-  { id: 2, name: "5A", studentsCount: 12, teacher: "Anna Nowak" },
-  { id: 3, name: "6B", studentsCount: 11, teacher: "Piotr Wiśniewski" },
-  { id: 4, name: "7C", studentsCount: 9, teacher: "Maria Kamińska" },
-];
-
-const initialStudents: Student[] = [
-  { id: 1, name: "Adam Nowak", classId: 1, className: "5P" },
-  { id: 2, name: "Julia Kowalska", classId: 1, className: "5P" },
-  { id: 3, name: "Kacper Wójcik", classId: 1, className: "5P" },
-  { id: 4, name: "Zuzanna Mazur", classId: 1, className: "5P" },
-  { id: 5, name: "Jakub Kamiński", classId: 1, className: "5P" },
-  { id: 6, name: "Maja Lewandowska", classId: 1, className: "5P" },
-  { id: 7, name: "Antoni Zieliński", classId: 1, className: "5P" },
-  { id: 8, name: "Oliwia Szymańska", classId: 1, className: "5P" },
-  { id: 9, name: "Filip Dąbrowski", classId: 1, className: "5P" },
-  { id: 10, name: "Natalia Woźniak", classId: 1, className: "5P" },
-  { id: 11, name: "Szymon Lewandowski", classId: 2, className: "5A" },
-  { id: 12, name: "Lena Kamińska", classId: 2, className: "5A" },
-  { id: 13, name: "Mikołaj Wiśniewski", classId: 3, className: "6B" },
-  { id: 14, name: "Zofia Nowak", classId: 4, className: "7C" },
-];
-
 export default function ClassesPage() {
   const pathname = usePathname();
-  const router = useRouter();
 
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
@@ -109,47 +84,61 @@ export default function ClassesPage() {
 
   const selectedClass = classes.find((c) => c.id === selectedClassId);
 
-  const addClass = () => {
+  const addClass = async () => {
     if (!newClassName.trim()) return;
-    const newId = Math.max(...classes.map((c) => c.id), 0) + 1;
-    setClasses((prev) => [
-      ...prev,
-      {
-        id: newId,
-        name: newClassName.trim().toUpperCase(),
-        studentsCount: 0,
-        teacher: newClassTeacher.trim() || "—",
-      },
-    ]);
-    setNewClassName("");
-    setNewClassTeacher("");
-    setShowAddClass(false);
+    try {
+      const res = await fetch("/api/classes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newClassName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Nie udało się dodać klasy");
+      setClasses((prev) => [...prev, data.class]);
+      setNewClassName("");
+      setNewClassTeacher("");
+      setShowAddClass(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Błąd");
+    }
   };
 
-  const addStudent = () => {
-    if (!newStudentName.trim()) return;
-    const classItem = classes.find((c) => c.id === newStudentClassId);
-    if (!classItem) return;
-
-    const newId = Math.max(...students.map((s) => s.id), 0) + 1;
-    setStudents((prev) => [
-      ...prev,
-      {
-        id: newId,
-        name: newStudentName.trim(),
-        classId: newStudentClassId,
-        className: classItem.name,
-      },
-    ]);
-    setClasses((prev) =>
-      prev.map((c) =>
-        c.id === newStudentClassId
-          ? { ...c, studentsCount: c.studentsCount + 1 }
-          : c
-      )
-    );
-    setNewStudentName("");
-    setShowAddStudent(false);
+  const addStudent = async () => {
+    if (!newStudentName.trim() || !newStudentClassId) return;
+    try {
+      const res = await fetch("/api/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: newStudentName.trim().split(" ")[0],
+          lastName: newStudentName.trim().split(" ").slice(1).join(" "),
+          classId: newStudentClassId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Nie udało się dodać ucznia");
+      const classItem = classes.find((c) => c.id === newStudentClassId);
+      setStudents((prev) => [
+        ...prev,
+        {
+          id: data.student.id,
+          name: `${data.student.firstName} ${data.student.lastName}`,
+          classId: newStudentClassId,
+          className: classItem?.name ?? "?",
+        },
+      ]);
+      setClasses((prev) =>
+        prev.map((c) =>
+          c.id === newStudentClassId
+            ? { ...c, studentsCount: c.studentsCount + 1 }
+            : c
+        )
+      );
+      setNewStudentName("");
+      setShowAddStudent(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Błąd");
+    }
   };
 
   const navItems = [

@@ -35,11 +35,13 @@ export async function GET() {
         const count = stCount[0]?.count ?? 0;
 
         // Pobierz nazwę wychowawcy
-        const teacherRow = await db
-          .select({ name: user.name })
-          .from(user)
-          .where(eq(user.id, cls.educatorId))
-          .limit(1);
+        const teacherRow = cls.educatorId
+          ? await db
+              .select({ name: user.name })
+              .from(user)
+              .where(eq(user.id, cls.educatorId))
+              .limit(1)
+          : [];
         const teacher = teacherRow[0]?.name ?? "—";
 
         return {
@@ -52,6 +54,35 @@ export async function GET() {
     );
 
     return NextResponse.json(classesWithCount);
+  } catch (error) {
+    console.error(error);
+    return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const session = await auth.api.getSession({ headers: await headers() });
+    if (!session?.user) {
+      return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
+    }
+    if (session.user.role !== "admin") {
+      return NextResponse.json({ error: "Brak uprawnień" }, { status: 403 });
+    }
+
+    const body = await request.json();
+    const { name, educatorId } = body as { name: string; educatorId?: string };
+
+    if (!name) {
+      return NextResponse.json({ error: "Brak nazwy klasy" }, { status: 400 });
+    }
+
+    const [newClass] = await db
+      .insert(schoolClass)
+      .values({ name, educatorId: educatorId || null })
+      .returning();
+
+    return NextResponse.json({ success: true, class: newClass }, { status: 201 });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });

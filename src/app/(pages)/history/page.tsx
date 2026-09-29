@@ -26,122 +26,6 @@ type HistoryRecord = {
   duration: number | null;
 };
 
-const initialHistory: HistoryRecord[] = [
-  {
-    id: 1,
-    student: "Julia Kowalska",
-    studentId: 2,
-    className: "5P",
-    date: "17.09.2026",
-    lesson: "Informatyka",
-    room: "202",
-    reason: "Toaleta",
-    exitTime: "10:18",
-    returnTime: "10:23",
-    duration: 5,
-  },
-  {
-    id: 2,
-    student: "Jakub Kamiński",
-    studentId: 5,
-    className: "5P",
-    date: "17.09.2026",
-    lesson: "Informatyka",
-    room: "202",
-    reason: "Sekretariat",
-    exitTime: "10:25",
-    returnTime: "10:34",
-    duration: 9,
-  },
-  {
-    id: 3,
-    student: "Kacper Wójcik",
-    studentId: 3,
-    className: "5P",
-    date: "17.09.2026",
-    lesson: "Matematyka",
-    room: "204",
-    reason: "Pedagog",
-    exitTime: "09:42",
-    returnTime: "09:52",
-    duration: 10,
-  },
-  {
-    id: 4,
-    student: "Adam Nowak",
-    studentId: 1,
-    className: "5P",
-    date: "17.09.2026",
-    lesson: "Matematyka",
-    room: "204",
-    reason: "Toaleta",
-    exitTime: "09:31",
-    returnTime: "09:36",
-    duration: 5,
-  },
-  {
-    id: 5,
-    student: "Zuzanna Mazur",
-    studentId: 4,
-    className: "5P",
-    date: "16.09.2026",
-    lesson: "Informatyka",
-    room: "202",
-    reason: "Pielęgniarka",
-    exitTime: "11:12",
-    returnTime: "11:25",
-    duration: 13,
-  },
-  {
-    id: 6,
-    student: "Maja Lewandowska",
-    studentId: 6,
-    className: "5P",
-    date: "16.09.2026",
-    lesson: "Język polski",
-    room: "108",
-    reason: "Sekretariat",
-    exitTime: "12:05",
-    returnTime: "12:11",
-    duration: 6,
-  },
-  {
-    id: 7,
-    student: "Antoni Zieliński",
-    studentId: 7,
-    className: "5P",
-    date: "16.09.2026",
-    lesson: "Matematyka",
-    room: "204",
-    reason: "Toaleta",
-    exitTime: "08:26",
-    returnTime: "08:31",
-    duration: 5,
-  },
-  {
-    id: 8,
-    student: "Oliwia Szymańska",
-    studentId: 8,
-    className: "5P",
-    date: "15.09.2026",
-    lesson: "Informatyka",
-    room: "202",
-    reason: "Inny",
-    exitTime: "10:14",
-    returnTime: "10:21",
-    duration: 7,
-  },
-];
-
-const reasons = [
-  "Wszystkie",
-  "Toaleta",
-  "Sekretariat",
-  "Pedagog",
-  "Pielęgniarka",
-  "Inny",
-];
-
 export default function HistoryPage() {
   const pathname = usePathname();
   const router = useRouter();
@@ -156,6 +40,7 @@ export default function HistoryPage() {
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedRecord, setSelectedRecord] =
     useState<HistoryRecord | null>(null);
+  const [reasons, setReasons] = useState<string[]>([]);
 
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
   const [correctionRecord, setCorrectionRecord] =
@@ -164,6 +49,13 @@ export default function HistoryPage() {
   const [correctionReason, setCorrectionReason] = useState("");
   const [correctionExitTime, setCorrectionExitTime] = useState("");
   const [correctionReturnTime, setCorrectionReturnTime] = useState("");
+
+  useEffect(() => {
+    fetch("/api/leaves/reasons")
+      .then((res) => res.json())
+      .then((data: string[]) => setReasons(["Wszystkie", ...data]))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams();

@@ -52,9 +52,14 @@ No test suite exists. No CI config.
 | `/api/lesson` | POST | Start/stop lesson (`{action: "start"|"stop", classId?, lessonId?, subject?}`) |
 | `/api/leaves` | POST | Register student exit (`{studentId, reason}`) |
 | `/api/leaves/[id]/return` | PATCH | Register student return (writes `returnedAt` + audit log) |
+| `/api/leaves/reasons` | GET | Unique leave reasons |
 | `/api/history` | GET | All leaves with filters: `?class=&reason=&from=&to=` |
 | `/api/classes` | GET | Classes for current user (admin sees all) |
+| `/api/classes` | POST | Create class (admin only) |
 | `/api/students` | GET | Students by `?classId=` |
+| `/api/students` | POST | Create student (admin only) |
+| `/api/users` | GET | List all users (admin only) |
+| `/api/users` | POST | Create user (admin only) |
 | `/api/auth/[...auth]` | * | Better Auth handler |
 
 ## Conventions
@@ -92,9 +97,9 @@ drizzle/              # generated migrations
 
 - **No tests** — verify changes manually in the browser
 - **`db:seed` is destructive** — deletes all rows in all tables before inserting
-- **Classes, History, and Settings pages contain hardcoded mock data** (initialClasses, initialUsers, initialHistory arrays) — only Dashboard is fully wired to the API
 - **No CI** — no automated checks on push
 - **Next.js 16 + Turbopack** — dev mode uses Turbopack by default; some older Next.js docs may not apply
 - **`better-auth/minimal`** is imported (not the full `better-auth` package) — check available exports before adding plugins
 - **Middleware runs on `nodejs` runtime** — not edge-compatible
 - **sqlite.db is committed** — the dev database file is in the repo root
+- **Settings page is admin-only** — `/api/users` requires admin role; non-admin users will get 403

@@ -1,70 +1,147 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
 
 type User = {
-  id: number;
-  name: string;
+  id: string;
+  name: string | null;
   email: string;
-  role: "Nauczyciel" | "Wychowawca" | "Administrator";
-  active: boolean;
+  role: "admin" | "teacher" | "educator" | "student";
+  emailVerified: boolean;
+  createdAt: Date;
 };
 
-const initialUsers: User[] = [
-  { id: 1, name: "Jan Kowalski", email: "jan.kowalski@szkola.pl", role: "Nauczyciel", active: true },
-  { id: 2, name: "Anna Nowak", email: "anna.nowak@szkola.pl", role: "Wychowawca", active: true },
-  { id: 3, name: "Piotr Wiśniewski", email: "piotr.wisniewski@szkola.pl", role: "Administrator", active: true },
-  { id: 4, name: "Maria Kamińska", email: "maria.kaminska@szkola.pl", role: "Nauczyciel", active: false },
-];
+type ClassItem = {
+  id: number;
+  name: string;
+  studentsCount: number;
+  teacher: string;
+};
+
+const roleLabels: Record<string, string> = {
+  admin: "Administrator",
+  teacher: "Nauczyciel",
+  educator: "Wychowawca",
+  student: "Uczeń",
+};
 
 export default function SettingsPage() {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState<"users" | "roles" | "config">("users");
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const [activeTab, setActiveTab] = useState<"users" | "classes" | "roles" | "config">("users");
+  const [users, setUsers] = useState<User[]>([]);
+  const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [loadingClasses, setLoadingClasses] = useState(true);
+
   const [showAddUser, setShowAddUser] = useState(false);
+  const [showAddClass, setShowAddClass] = useState(false);
+  const [showAddStudent, setShowAddStudent] = useState(false);
 
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{
-    id: number;
-    name: string;
-  } | null>(null);
-  const deleteUser = (id: number) => {
-    setUsers((prev) => prev.filter((u) => u.id !== id));
-    setShowDeleteConfirm(null);
-  };
-
-  // Form state
+  // Form state — user
   const [newName, setNewName] = useState("");
   const [newEmail, setNewEmail] = useState("");
-  const [newRole, setNewRole] = useState<"Nauczyciel" | "Wychowawca" | "Administrator">("Nauczyciel");
+  const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<"admin" | "teacher" | "educator" | "student">("teacher");
 
-  const addUser = () => {
-    if (!newName.trim() || !newEmail.trim()) return;
-    const newId = Math.max(...users.map((u) => u.id), 0) + 1;
-    setUsers((prev) => [
-      ...prev,
-      {
-        id: newId,
-        name: newName.trim(),
-        email: newEmail.trim(),
-        role: newRole,
-        active: true,
-      },
-    ]);
-    setNewName("");
-    setNewEmail("");
-    setNewRole("Nauczyciel");
-    setShowAddUser(false);
+  // Form state — class
+  const [newClassName, setNewClassName] = useState("");
+
+  // Form state — student
+  const [newStudentName, setNewStudentName] = useState("");
+  const [newStudentClassId, setNewStudentClassId] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("/api/users")
+      .then((res) => res.json())
+      .then((data: User[]) => setUsers(data))
+      .catch(() => {})
+      .finally(() => setLoadingUsers(false));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/classes")
+      .then((res) => res.json())
+      .then((data: ClassItem[]) => setClasses(data))
+      .catch(() => {})
+      .finally(() => setLoadingClasses(false));
+  }, []);
+
+  const addUser = async () => {
+    if (!newName.trim() || !newEmail.trim() || !newPassword.trim()) return;
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: newEmail.trim(),
+          password: newPassword,
+          name: newName.trim(),
+          role: newRole,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Nie udało się dodać użytkownika");
+      setUsers((prev) => [...prev, data.user]);
+      setNewName("");
+      setNewEmail("");
+      setNewPassword("");
+      setNewRole("teacher");
+      setShowAddUser(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Błąd");
+    }
   };
 
-  const toggleActive = (id: number) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, active: !u.active } : u))
-    );
+  const addClass = async () => {
+    if (!newClassName.trim()) return;
+    try {
+      const res = await fetch("/api/classes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newClassName.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Nie udało się dodać klasy");
+      setClasses((prev) => [...prev, { ...data.class, studentsCount: 0, teacher: "—" }]);
+      setNewClassName("");
+      setShowAddClass(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Błąd");
+    }
+  };
+
+  const addStudent = async () => {
+    if (!newStudentName.trim() || !newStudentClassId) return;
+    try {
+      const res = await fetch("/api/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: newStudentName.trim().split(" ")[0],
+          lastName: newStudentName.trim().split(" ").slice(1).join(" "),
+          classId: newStudentClassId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Nie udało się dodać ucznia");
+      setClasses((prev) =>
+        prev.map((c) =>
+          c.id === newStudentClassId
+            ? { ...c, studentsCount: c.studentsCount + 1 }
+            : c
+        )
+      );
+      setNewStudentName("");
+      setNewStudentClassId(null);
+      setShowAddStudent(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Błąd");
+    }
   };
 
   const navItems = [
@@ -229,6 +306,7 @@ export default function SettingsPage() {
             <div className="mb-6 flex gap-2 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-sm">
               {[
                 { id: "users", label: "Użytkownicy" },
+                { id: "classes", label: "Klasy i uczniowie" },
                 { id: "roles", label: "Role i uprawnienia" },
                 { id: "config", label: "Konfiguracja" },
               ].map((tab) => (
@@ -273,62 +351,105 @@ export default function SettingsPage() {
                           <th className="px-6 py-3 font-semibold">Użytkownik</th>
                           <th className="px-6 py-3 font-semibold">Rola</th>
                           <th className="px-6 py-3 font-semibold">Status</th>
-                          <th className="px-6 py-3 font-semibold">Akcja</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {users.map((user) => (
-                          <tr key={user.id} className="transition hover:bg-slate-50/70">
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
-                                  {user.name.split(" ").map((n) => n[0]).join("")}
-                                </div>
-                                <div>
-                                  <p className="text-sm font-semibold text-slate-800">{user.name}</p>
-                                  <p className="text-xs text-slate-400">{user.email}</p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                                {user.role}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4">
-                              {user.active ? (
-                                <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                  Aktywny
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
-                                  <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                                  Nieaktywny
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => toggleActive(user.id)}
-                                  className="cursor-pointer rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                                >
-                                  {user.active ? "Dezaktywuj" : "Aktywuj"}
-                                </button>
-                                <button
-                                  onClick={() => setShowDeleteConfirm({ id: user.id, name: user.name })}
-                                  className="cursor-pointer rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50"
-                                >
-                                  Usuń
-                                </button>
-                              </div>
+                        {loadingUsers ? (
+                          <tr>
+                            <td colSpan={3} className="px-6 py-10 text-center text-sm text-slate-400">
+                              Ładowanie...
                             </td>
                           </tr>
-                        ))}
+                        ) : users.length === 0 ? (
+                          <tr>
+                            <td colSpan={3} className="px-6 py-10 text-center text-sm text-slate-400">
+                              Brak użytkowników
+                            </td>
+                          </tr>
+                        ) : (
+                          users.map((user) => (
+                            <tr key={user.id} className="transition hover:bg-slate-50/70">
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-600">
+                                    {user.name?.split(" ").map((n) => n[0]).join("").slice(0, 2) || "?"}
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-semibold text-slate-800">{user.name || "—"}</p>
+                                    <p className="text-xs text-slate-400">{user.email}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                <span className="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                                  {roleLabels[user.role] || user.role}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4">
+                                {user.emailVerified ? (
+                                  <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                    Aktywny
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
+                                    <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                                    Nieaktywny
+                                  </span>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
+                </div>
+              )}
+
+              {/* ===== KLASY I UCZNIOWIE ===== */}
+              {activeTab === "classes" && (
+                <div className="p-6">
+                  <div className="mb-6 flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-bold">Klasy i uczniowie</h2>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Zarządzaj klasami i przypisanymi uczniami
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setShowAddClass(true)}
+                        className="cursor-pointer rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700"
+                      >
+                        + Dodaj klasę
+                      </button>
+                      <button
+                        onClick={() => setShowAddStudent(true)}
+                        className="cursor-pointer rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        + Dodaj ucznia
+                      </button>
+                    </div>
+                  </div>
+
+                  {loadingClasses ? (
+                    <p className="py-10 text-center text-sm text-slate-400">Ładowanie...</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {classes.map((cls) => (
+                        <div key={cls.id} className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-bold text-slate-800">{cls.name}</p>
+                            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                              {cls.studentsCount} uczniów
+                            </span>
+                          </div>
+                          <p className="mt-1 text-sm text-slate-500">Wychowawca: {cls.teacher}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -465,15 +586,26 @@ export default function SettingsPage() {
                 />
               </div>
               <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500">Hasło</label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Min. 8 znaków"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+              <div>
                 <label className="mb-1.5 block text-xs font-semibold text-slate-500">Rola</label>
                 <select
                   value={newRole}
                   onChange={(e) => setNewRole(e.target.value as typeof newRole)}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                 >
-                  <option value="Nauczyciel">Nauczyciel</option>
-                  <option value="Wychowawca">Wychowawca</option>
-                  <option value="Administrator">Administrator</option>
+                  <option value="teacher">Nauczyciel</option>
+                  <option value="educator">Wychowawca</option>
+                  <option value="admin">Administrator</option>
+                  <option value="student">Uczeń</option>
                 </select>
               </div>
             </div>
@@ -496,31 +628,111 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* MODAL – POTWIERDZENIE USUNIĘCIA UŻYTKOWNIKA */}
-      {showDeleteConfirm && (
+      {/* MODAL DODAJ KLASĘ */}
+      {showAddClass && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-slate-900">Potwierdzenie usunięcia</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              Czy na pewno chcesz usunąć użytkownika{" "}
-              <span className="font-semibold text-slate-800">
-                „{showDeleteConfirm.name}”
-              </span>
-              ?
-            </p>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Dodaj klasę</h3>
+                <p className="mt-1 text-sm text-slate-500">Utwórz nową klasę w systemie</p>
+              </div>
+              <button
+                onClick={() => setShowAddClass(false)}
+                className="cursor-pointer text-slate-400 transition hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500">Nazwa klasy</label>
+                <input
+                  type="text"
+                  value={newClassName}
+                  onChange={(e) => setNewClassName(e.target.value)}
+                  placeholder="np. 3C"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+            </div>
 
             <div className="mt-6 flex gap-3">
               <button
-                onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 cursor-pointer rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                onClick={() => setShowAddClass(false)}
+                className="flex-1 cursor-pointer rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
               >
                 Anuluj
               </button>
               <button
-                onClick={() => deleteUser(showDeleteConfirm.id)}
-                className="flex-1 cursor-pointer rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
+                onClick={addClass}
+                className="flex-1 cursor-pointer rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"
               >
-                Usuń
+                Dodaj
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DODAJ UCZNIA */}
+      {showAddStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Dodaj ucznia</h3>
+                <p className="mt-1 text-sm text-slate-500">Utwórz nowego ucznia i przypisz do klasy</p>
+              </div>
+              <button
+                onClick={() => setShowAddStudent(false)}
+                className="cursor-pointer text-slate-400 transition hover:text-slate-700"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500">Imię i nazwisko</label>
+                <input
+                  type="text"
+                  value={newStudentName}
+                  onChange={(e) => setNewStudentName(e.target.value)}
+                  placeholder="np. Jan Kowalski"
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500">Klasa</label>
+                <select
+                  value={newStudentClassId ?? ""}
+                  onChange={(e) => setNewStudentClassId(Number(e.target.value))}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                >
+                  <option value="">Wybierz klasę...</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowAddStudent(false)}
+                className="flex-1 cursor-pointer rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={addStudent}
+                className="flex-1 cursor-pointer rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"
+              >
+                Dodaj
               </button>
             </div>
           </div>
@@ -553,7 +765,6 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
-
     </main>
   );
 }
