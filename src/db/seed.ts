@@ -67,8 +67,8 @@ async function main() {
       educatorId: createdUsers["tomasz.n@szkola.pl"], // Poprawne ID nauczyciela
     }).returning({ id: schoolClass.id });
     
-    const class1Id = class1Res[0].id.toString();
-    const class2Id = class2Res[0].id.toString();
+    const class1Id = class1Res[0].id;
+    const class2Id = class2Res[0].id;
     
     // 3. Tworzenie uczniów
     const studentsClass1 = [
@@ -108,8 +108,8 @@ async function main() {
       startedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
     }).returning({ id: lessonSession.id });
     
-    const student1Id = insertedStudents[0].id.toString(); // Kamil Kowalski
-    const student2Id = insertedStudents[1].id.toString(); // Zofia Zielińska
+    const student1Id = insertedStudents[0].id; // Kamil Kowalski
+    const student2Id = insertedStudents[1].id; // Zofia Zielińska
     
     // 6. Aktywne wyjście
     await db.insert(studentLeave).values({

@@ -68,10 +68,18 @@ export default function HistoryPage() {
     fetch(`/api/history?${params.toString()}`)
       .then((res) => res.json())
       .then((data) => {
-        setHistory(data);
+        if (Array.isArray(data)) {
+          setHistory(data);
+        } else {
+          console.error("API returned non-array:", data);
+          setHistory([]);
+        }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {
+        setHistory([]);
+        setLoading(false);
+      });
   }, [selectedClass, selectedReason, selectedDate]);
 
   useEffect(() => {
@@ -160,7 +168,7 @@ export default function HistoryPage() {
   }, [history, search, selectedClass, selectedReason, selectedDate]);
 
   const totalMinutes = filteredHistory.reduce(
-    (sum, record) => sum + record.duration,
+    (sum, record) => sum + (record.duration ?? 0),
     0
   );
 

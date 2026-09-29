@@ -66,7 +66,7 @@ export const student = sqliteTable('student', {
 // LESSONS, LEAVE
 export const lessonSession = sqliteTable('lesson_session', {
   id: text('id').primaryKey().$defaultFn(() => sql`lower(hex(randomblob(16)))`),
-  classId: text('class_id').notNull().references(() => schoolClass.id, { onDelete: 'cascade' }),
+  classId: integer('class_id').notNull().references(() => schoolClass.id, { onDelete: 'cascade' }),
   teacherId: text('teacher_id').notNull().references(() => user.id),
   subject: text('subject'), // np. "Matematyka"
   startedAt: integer('started_at', { mode: 'timestamp' })
@@ -77,7 +77,7 @@ export const lessonSession = sqliteTable('lesson_session', {
 
 export const studentLeave = sqliteTable('student_leave', {
   id: text('id').primaryKey().$defaultFn(() => sql`lower(hex(randomblob(16)))`),
-  studentId: text('student_id').notNull().references(() => student.id, { onDelete: 'cascade' }),
+  studentId: integer('student_id').notNull().references(() => student.id, { onDelete: 'cascade' }),
   lessonSessionId: text('lesson_session_id').notNull().references(() => lessonSession.id, { onDelete: 'cascade' }),
   reason: text('reason'), // np. "Toaleta", "Higienistka"
   leftAt: integer('left_at', { mode: 'timestamp' })

@@ -11,6 +11,7 @@ type Student = {
   id: number;
   firstName: string;
   lastName: string;
+  name: string;
   status: StudentStatus;
   exitTime?: string;
   reason?: string;
@@ -129,6 +130,7 @@ const loadDashboard = async () => {
         id: student.id,
         firstName: student.firstName,
         lastName: student.lastName,
+        name: `${student.firstName} ${student.lastName}`,
         status: leave ? "Poza salą" : "W sali",
         leaveId: leave?.id,
         exitTime: leave

@@ -21,6 +21,7 @@ type Student = {
 
 export default function ClassesPage() {
   const pathname = usePathname();
+  const router = useRouter();
 
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
@@ -60,11 +61,19 @@ export default function ClassesPage() {
     setLoadingStudents(true);
     fetch(`/api/students?classId=${selectedClassId}`)
       .then((res) => res.json())
-      .then((data: Student[]) => {
-        setStudents(data);
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setStudents(data);
+        } else {
+          console.error("API returned non-array:", data);
+          setStudents([]);
+        }
         setLoadingStudents(false);
       })
-      .catch(() => setLoadingStudents(false));
+      .catch(() => {
+        setStudents([]);
+        setLoadingStudents(false);
+      });
   }, [selectedClassId]);
 
   const filteredClasses = useMemo(() => {
@@ -692,7 +701,7 @@ export default function ClassesPage() {
                   Klasa
                 </label>
                 <select
-                  value={newStudentClassId}
+                  value={newStudentClassId ?? ""}
                   onChange={(e) => setNewStudentClassId(Number(e.target.value))}
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                 >
