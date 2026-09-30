@@ -81,6 +81,7 @@ export default function SettingsPage() {
 
   // Form state — class
   const [newClassName, setNewClassName] = useState("");
+  const [newClassEducatorId, setNewClassEducatorId] = useState("");
 
   // Form state — student
   const [newStudentName, setNewStudentName] = useState("");
@@ -174,12 +175,16 @@ export default function SettingsPage() {
       const res = await fetch("/api/classes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newClassName.trim() }),
+        body: JSON.stringify({
+          name: newClassName.trim(),
+          educatorId: newClassEducatorId || undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Nie udało się dodać klasy");
       setClasses((prev) => [...prev, { ...data.class, studentsCount: 0, teacher: "—" }]);
       setNewClassName("");
+      setNewClassEducatorId("");
       setShowAddClass(false);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Błąd");
@@ -845,6 +850,21 @@ export default function SettingsPage() {
                   placeholder="np. 3C"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                 />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-slate-500">Wychowawca</label>
+                <select
+                  value={newClassEducatorId}
+                  onChange={(e) => setNewClassEducatorId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                >
+                  <option value="">— Wybierz wychowawcę —</option>
+                  {users?.filter((u) => u.role === "teacher" || u.role === "educator").map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name} ({u.email})
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
 

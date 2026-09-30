@@ -16,7 +16,25 @@ export async function GET(request: Request) {
     const classId = searchParams.get("classId");
 
     if (!classId) {
-      return NextResponse.json({ error: "Brak classId" }, { status: 400 });
+      // Zwróć wszystkich uczniów z nazwą klasy
+      const allStudents = await db.select().from(student);
+      const data = await Promise.all(
+        allStudents.map(async (s) => {
+          const classRow = await db
+            .select({ name: schoolClass.name })
+            .from(schoolClass)
+            .where(eq(schoolClass.id, s.classId))
+            .limit(1);
+          const className = classRow[0]?.name ?? "?";
+          return {
+            id: s.id,
+            name: `${s.firstName} ${s.lastName}`,
+            classId: s.classId,
+            className,
+          };
+        })
+      );
+      return NextResponse.json(data);
     }
 
     const classIdNum = Number(classId);
