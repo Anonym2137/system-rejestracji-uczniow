@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
+import { signOut, useSession } from "../lib/auth-client";
 
 type StudentStatus = "W sali" | "Poza salą";
 
@@ -24,6 +25,12 @@ type DashboardData = {
     name: string;
     educatorId?: string;
   } | null;
+
+  classes: {
+    id: number;
+    name: string;
+    educatorId?: string;
+  }[];
 
   lesson: {
     id: string;
@@ -64,6 +71,7 @@ type DashboardData = {
 export default function MainPage() {
   const pathname = usePathname();
   const router = useRouter();
+  const { data: session } = useSession();
 
   const [students, setStudents] = useState<Student[]>([]);
   const [lessonActive, setLessonActive] = useState(false);
@@ -71,6 +79,8 @@ export default function MainPage() {
   const [classId, setClassId] = useState<number | null>(null);
   const [className, setClassName] = useState("");
   const [subject, setSubject] = useState("");
+  const [lessonNumber, setLessonNumber] = useState("");
+  const [lessonStartTime, setLessonStartTime] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedReason, setSelectedReason] = useState("Toaleta");
@@ -78,6 +88,7 @@ export default function MainPage() {
   const [selectedStudent, setSelectedStudent] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [todayStats, setTodayStats] = useState<DashboardData["todayStats"]>(undefined);
+  const [allClasses, setAllClasses] = useState<DashboardData["classes"]>([]);
   const [endTime, setEndTime] = useState<string>("");
   const [lessonStartedAt, setLessonStartedAt] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<{
@@ -89,12 +100,16 @@ export default function MainPage() {
 
 
 
-const loadDashboard = async () => {
+const loadDashboard = async (classIdOverride?: number) => {
   try {
     setLoading(true);
     setError(null);
 
-    const response = await fetch("/api/dashboard", {
+    const url = classIdOverride
+      ? `/api/dashboard?classId=${classIdOverride}`
+      : "/api/dashboard";
+
+    const response = await fetch(url, {
       cache: "no-store",
     });
 
@@ -104,6 +119,7 @@ const loadDashboard = async () => {
 
     const data: DashboardData = await response.json();
 
+    setAllClasses(data.classes ?? []);
     setClassId(data.class?.id ?? null);
     setClassName(data.class?.name ?? "");
     setCurrentUser(data.user);
@@ -316,7 +332,9 @@ const toggleLesson = async () => {
         body: JSON.stringify({
           action: "start",
           classId,
-          subject: subject || "Informatyka",
+          subject: subject || undefined,
+          lessonNumber: lessonNumber || undefined,
+          startTime: lessonStartTime || undefined,
         }),
       });
 
@@ -341,6 +359,10 @@ const toggleLesson = async () => {
     );
   }
 };
+
+  const handleClassChange = async (newClassId: number) => {
+    await loadDashboard(newClassId);
+  };
 
   const navItems = [
     {
@@ -476,21 +498,28 @@ const toggleLesson = async () => {
           <div className="border-t border-white/10 p-4">
             <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-bold">
-                JK
+                {currentUser?.name?.split(" ").map((n) => n[0]).join("").slice(0, 2) || "?"}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">Jan Kowalski</p>
-                <p className="text-xs text-slate-400">Nauczyciel</p>
+                <p className="truncate text-sm font-semibold">{currentUser?.name || "Użytkownik"}</p>
+                <p className="text-xs text-slate-400">
+                  {currentUser?.role === "admin" ? "Administrator" :
+                   currentUser?.role === "educator" ? "Wychowawca" :
+                   currentUser?.role === "teacher" ? "Nauczyciel" : "Użytkownik"}
+                </p>
               </div>
               <button
-                onClick={() => setShowLogoutConfirm(true)}
+                onClick={async () => {
+                  await signOut();
+                  router.push("/sign-in");
+                }}
                 title="Wyloguj"
                 className="cursor-pointer text-slate-400 transition hover:text-white"
               >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-5 w-5">
-                <path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H3" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-5 w-5">
+                  <path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H3" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
             </div>
           </div>
         </aside>
@@ -518,11 +547,15 @@ const toggleLesson = async () => {
 
               <div className="flex items-center gap-3">
                 <div className="hidden text-right sm:block">
-                  <p className="text-sm font-semibold">Jan Kowalski</p>
-                  <p className="text-xs text-slate-400">Nauczyciel</p>
+                  <p className="text-sm font-semibold">{currentUser?.name || "Użytkownik"}</p>
+                  <p className="text-xs text-slate-400">
+                    {currentUser?.role === "admin" ? "Administrator" :
+                     currentUser?.role === "educator" ? "Wychowawca" :
+                     currentUser?.role === "teacher" ? "Nauczyciel" : "Użytkownik"}
+                  </p>
                 </div>
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-                  JK
+                  {currentUser?.name?.split(" ").map((n) => n[0]).join("").slice(0, 2) || "?"}
                 </div>
               </div>
             </div>
@@ -608,17 +641,74 @@ const toggleLesson = async () => {
                   </p>
                 </div>
 
-                <button
-                  onClick={toggleLesson}
-                  className={`cursor-pointer rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
-                    lessonActive
-                      ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      : "bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700"
-                  }`}
-                >
-                  {lessonActive ? "Zakończ lekcję" : "Rozpocznij lekcję"}
-                </button>
+                <div className="flex items-center gap-3">
+                  {!lessonActive && (
+                    <>
+                      <input
+                        type="text"
+                        value={subject}
+                        onChange={(e) => setSubject(e.target.value)}
+                        placeholder="Przedmiot (np. Matematyka)"
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      <input
+                        type="text"
+                        value={lessonNumber}
+                        onChange={(e) => setLessonNumber(e.target.value)}
+                        placeholder="Numer lekcji (np. 3)"
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                      <input
+                        type="time"
+                        value={lessonStartTime}
+                        onChange={(e) => setLessonStartTime(e.target.value)}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                    </>
+                  )}
+
+                  {allClasses.length > 1 && (
+                    <select
+                      value={classId ?? ""}
+                      onChange={(e) => handleClassChange(Number(e.target.value))}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      {allClasses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+
+                  <button
+                    onClick={toggleLesson}
+                    disabled={!classId}
+                    className={`cursor-pointer rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                      !classId
+                        ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                        : lessonActive
+                          ? "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                          : "bg-blue-600 text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700"
+                    }`}
+                  >
+                    {lessonActive ? "Zakończ lekcję" : "Rozpocznij lekcję"}
+                  </button>
+                </div>
               </div>
+
+              {!classId && (
+                <div className="border-b border-slate-100 bg-amber-50 px-5 py-3 text-sm text-amber-800 sm:px-6">
+                  Nie masz przypisanej żadnej klasy. Skontaktuj się z administratorem,
+                  aby przypisać Cię do klasy.
+                </div>
+              )}
+
+              {lessonActive && (
+                <div className="border-b border-slate-100 bg-blue-50 px-5 py-3 text-sm text-blue-800 sm:px-6">
+                  Lekcja już trwa. Możesz ją zakończyć klikając przycisk poniżej.
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-4 sm:p-6">
                 <LessonInfo label="Klasa" value={className ?? "—"} />
@@ -648,7 +738,7 @@ const toggleLesson = async () => {
                   <div>
                     <h2 className="text-lg font-bold">Lista uczniów</h2>
                     <p className="mt-1 text-sm text-slate-500">
-                      Klasa 5P • {students.length} uczniów
+                      {className || "—"} • {students.length} uczniów
                     </p>
                   </div>
 

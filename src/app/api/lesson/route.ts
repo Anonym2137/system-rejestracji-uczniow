@@ -13,11 +13,13 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { action, classId, lessonId, subject } = body as {
+    const { action, classId, lessonId, subject, lessonNumber, startTime } = body as {
       action: "start" | "stop";
       classId?: number | string;
       lessonId?: string;
       subject?: string;
+      lessonNumber?: string;
+      startTime?: string;
     };
 
     const userId = session.user.id;
@@ -63,6 +65,8 @@ export async function POST(request: Request) {
           classId: classIdNum,
           teacherId: userId,
           subject: subject || "Przedmiot",
+          lessonNumber: lessonNumber || null,
+          startTime: startTime || null,
           isActive: true,
           startedAt: new Date(),
         })

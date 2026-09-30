@@ -69,6 +69,8 @@ export const lessonSession = sqliteTable('lesson_session', {
   classId: integer('class_id').notNull().references(() => schoolClass.id, { onDelete: 'cascade' }),
   teacherId: text('teacher_id').notNull().references(() => user.id),
   subject: text('subject'), // np. "Matematyka"
+  lessonNumber: text('lesson_number'), // np. "3"
+  startTime: text('start_time'), // np. "08:00"
   startedAt: integer('started_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()), 

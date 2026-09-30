@@ -11,7 +11,7 @@ import {
   studentLeave,
 } from "../../../db/schema";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const session = await auth.api.getSession({
       headers: await headers(),
@@ -25,11 +25,15 @@ export async function GET() {
     }
 
     const userId = session.user.id;
+    const isAdmin = session.user.role === "admin";
 
-    const classes = await db
-      .select()
-      .from(schoolClass)
-      .where(eq(schoolClass.educatorId, userId));
+    // Pobierz klasy: admin widzi wszystkie, nauczyciel tylko swoje
+    const classes = isAdmin
+      ? await db.select().from(schoolClass)
+      : await db
+          .select()
+          .from(schoolClass)
+          .where(eq(schoolClass.educatorId, userId));
 
     if (classes.length === 0) {
       return NextResponse.json({
@@ -39,9 +43,20 @@ export async function GET() {
       });
     }
 
-    // Na ten moment bierzemy pierwszą klasę nauczyciela.
-    // Później możemy dodać wybór klasy.
-    const currentClass = classes[0];
+    // Wybierz klasę: z query param (admin) lub pierwszą dostępną
+    const { searchParams } = new URL(request.url);
+    const requestedClassId = searchParams.get("classId");
+    const currentClass = requestedClassId
+      ? classes.find((c) => c.id === Number(requestedClassId))
+      : classes[0];
+
+    if (!currentClass) {
+      return NextResponse.json({
+        class: null,
+        lesson: null,
+        students: [],
+      });
+    }
 
     const students = await db
       .select()
@@ -60,7 +75,22 @@ export async function GET() {
       )
       .limit(1);
 
-    const lesson = activeLessons[0] ?? null;
+    let lesson: typeof lessonSession.$inferSelect | null = activeLessons[0] ?? null;
+
+    // Auto-zakończenie po 45 minutach
+    if (lesson) {
+      const startTime = new Date(lesson.startedAt);
+      const now = new Date();
+      const diffMinutes = (now.getTime() - startTime.getTime()) / (1000 * 60);
+      
+      if (diffMinutes >= 45) {
+        await db
+          .update(lessonSession)
+          .set({ isActive: false })
+          .where(eq(lessonSession.id, lesson.id));
+        lesson = null;
+      }
+    }
 
     let leaves: typeof studentLeave.$inferSelect[] = [];
 
@@ -97,6 +127,7 @@ export async function GET() {
 
     return NextResponse.json({
       class: currentClass,
+      classes,
       lesson,
       students,
       leaves,

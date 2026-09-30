@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
+import { signOut, useSession } from "../../../lib/auth-client";
 
 type User = {
   id: string;
@@ -21,6 +22,13 @@ type ClassItem = {
   teacher: string;
 };
 
+type StudentItem = {
+  id: number;
+  name: string;
+  classId: number;
+  className: string;
+};
+
 const roleLabels: Record<string, string> = {
   admin: "Administrator",
   teacher: "Nauczyciel",
@@ -31,16 +39,39 @@ const roleLabels: Record<string, string> = {
 export default function SettingsPage() {
   const pathname = usePathname();
   const router = useRouter();
+  const { data: session } = useSession();
+  const userRole = (session?.user as { role?: string })?.role;
+  const isAdmin = userRole === "admin";
+  const userName = session?.user?.name || "Użytkownik";
+  const userInitials = userName.split(" ").map((n) => n[0]).join("").slice(0, 2) || "?";
+  const roleLabel = userRole === "admin" ? "Administrator" :
+                    userRole === "educator" ? "Wychowawca" :
+                    userRole === "teacher" ? "Nauczyciel" : "Użytkownik";
 
   const [activeTab, setActiveTab] = useState<"users" | "classes" | "roles" | "config">("users");
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<User[] | null>(null);
   const [classes, setClasses] = useState<ClassItem[]>([]);
+  const [students, setStudents] = useState<StudentItem[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingClasses, setLoadingClasses] = useState(true);
+  const [loadingStudents, setLoadingStudents] = useState(true);
 
   const [showAddUser, setShowAddUser] = useState(false);
+  const [showEditUser, setShowEditUser] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editUserName, setEditUserName] = useState("");
+  const [editUserEmail, setEditUserEmail] = useState("");
+  const [editUserRole, setEditUserRole] = useState<"admin" | "teacher" | "educator" | "student">("teacher");
   const [showAddClass, setShowAddClass] = useState(false);
+  const [showEditClass, setShowEditClass] = useState(false);
+  const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
+  const [editClassName, setEditClassName] = useState("");
+  const [editClassTeacher, setEditClassTeacher] = useState("");
   const [showAddStudent, setShowAddStudent] = useState(false);
+  const [showEditStudent, setShowEditStudent] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
+  const [editStudentName, setEditStudentName] = useState("");
+  const [editStudentClassId, setEditStudentClassId] = useState<number | null>(null);
 
   // Form state — user
   const [newName, setNewName] = useState("");
@@ -57,7 +88,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetch("/api/users")
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error("Brak uprawnień");
+        return res.json();
+      })
       .then((data: User[]) => setUsers(data))
       .catch(() => {})
       .finally(() => setLoadingUsers(false));
@@ -69,6 +103,14 @@ export default function SettingsPage() {
       .then((data: ClassItem[]) => setClasses(data))
       .catch(() => {})
       .finally(() => setLoadingClasses(false));
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/students")
+      .then((res) => res.json())
+      .then((data: StudentItem[]) => setStudents(data))
+      .catch(() => {})
+      .finally(() => setLoadingStudents(false));
   }, []);
 
   const addUser = async () => {
@@ -86,12 +128,41 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Nie udało się dodać użytkownika");
-      setUsers((prev) => [...prev, data.user]);
+      setUsers((prev) => prev ? [...prev, data.user] : [data.user]);
       setNewName("");
       setNewEmail("");
       setNewPassword("");
       setNewRole("teacher");
       setShowAddUser(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Błąd");
+    }
+  };
+
+  const openEditUser = (user: User) => {
+    setEditingUser(user);
+    setEditUserName(user.name || "");
+    setEditUserEmail(user.email);
+    setEditUserRole(user.role);
+    setShowEditUser(true);
+  };
+
+  const saveUser = async () => {
+    if (!editingUser) return;
+    try {
+      const res = await fetch(`/api/users/${editingUser.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editUserName,
+          email: editUserEmail,
+          role: editUserRole,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Nie udało się zaktualizować użytkownika");
+      setUsers((prev) => prev ? prev.map((u) => u.id === editingUser.id ? data.user : u) : null);
+      setShowEditUser(false);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Błąd");
     }
@@ -110,6 +181,33 @@ export default function SettingsPage() {
       setClasses((prev) => [...prev, { ...data.class, studentsCount: 0, teacher: "—" }]);
       setNewClassName("");
       setShowAddClass(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Błąd");
+    }
+  };
+
+  const openEditClass = (cls: ClassItem) => {
+    setEditingClass(cls);
+    setEditClassName(cls.name);
+    setEditClassTeacher(cls.teacher);
+    setShowEditClass(true);
+  };
+
+  const saveClass = async () => {
+    if (!editingClass) return;
+    try {
+      const res = await fetch(`/api/classes/${editingClass.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editClassName,
+          educatorId: editClassTeacher || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Nie udało się zaktualizować klasy");
+      setClasses((prev) => prev.map((c) => c.id === editingClass.id ? data.class : c));
+      setShowEditClass(false);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Błąd");
     }
@@ -139,6 +237,33 @@ export default function SettingsPage() {
       setNewStudentName("");
       setNewStudentClassId(null);
       setShowAddStudent(false);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Błąd");
+    }
+  };
+
+  const openEditStudent = (student: StudentItem) => {
+    setEditingStudent(student);
+    setEditStudentName(student.name);
+    setEditStudentClassId(student.classId);
+    setShowEditStudent(true);
+  };
+
+  const saveStudent = async () => {
+    if (!editingStudent) return;
+    try {
+      const res = await fetch(`/api/students/${editingStudent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: editStudentName.split(" ")[0],
+          lastName: editStudentName.split(" ").slice(1).join(" "),
+          classId: editStudentClassId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Nie udało się zaktualizować ucznia");
+      setShowEditStudent(false);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Błąd");
     }
@@ -222,42 +347,46 @@ export default function SettingsPage() {
               })}
             </div>
 
-            <div className="my-6 h-px bg-white/10" />
+            {isAdmin && (
+              <>
+                <div className="my-6 h-px bg-white/10" />
 
-            <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Administrator
-            </p>
-            <Link
-              href="/settings"
-              className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
-                pathname === "/settings"
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                  : "text-slate-300 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <span className="h-5 w-5">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <circle cx="12" cy="12" r="3.2" strokeWidth="1.8" />
-                  <path
-                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.998 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-              Ustawienia
-            </Link>
+                <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  Administrator
+                </p>
+                <Link
+                  href="/settings"
+                  className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
+                    pathname === "/settings"
+                      ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
+                      : "text-slate-300 hover:bg-white/5 hover:text-white"
+                  }`}
+                >
+                  <span className="h-5 w-5">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <circle cx="12" cy="12" r="3.2" strokeWidth="1.8" />
+                      <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.998 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
+                  Ustawienia
+                </Link>
+              </>
+            )}
           </nav>
 
           <div className="border-t border-white/10 p-4">
             <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-bold">
-                JK
+                {userInitials}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">Jan Kowalski</p>
-                <p className="text-xs text-slate-400">Nauczyciel</p>
+                <p className="truncate text-sm font-semibold">{userName}</p>
+                <p className="text-xs text-slate-400">{roleLabel}</p>
               </div>
               <button
                 onClick={() => setShowLogoutConfirm(true)}
@@ -291,11 +420,11 @@ export default function SettingsPage() {
               </div>
               <div className="flex items-center gap-3">
                 <div className="hidden text-right sm:block">
-                  <p className="text-sm font-semibold">Jan Kowalski</p>
-                  <p className="text-xs text-slate-400">Nauczyciel</p>
+                  <p className="text-sm font-semibold">{userName}</p>
+                  <p className="text-xs text-slate-400">{roleLabel}</p>
                 </div>
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-                  JK
+                  {userInitials}
                 </div>
               </div>
             </div>
@@ -360,6 +489,12 @@ export default function SettingsPage() {
                               Ładowanie...
                             </td>
                           </tr>
+                        ) : !users ? (
+                          <tr>
+                            <td colSpan={3} className="px-6 py-10 text-center text-sm text-slate-400">
+                              Brak uprawnień do przeglądania użytkowników
+                            </td>
+                          </tr>
                         ) : users.length === 0 ? (
                           <tr>
                             <td colSpan={3} className="px-6 py-10 text-center text-sm text-slate-400">
@@ -397,6 +532,14 @@ export default function SettingsPage() {
                                     Nieaktywny
                                   </span>
                                 )}
+                              </td>
+                              <td className="px-6 py-4">
+                                <button
+                                  onClick={() => openEditUser(user)}
+                                  className="cursor-pointer text-blue-600 hover:text-blue-800"
+                                >
+                                  Edytuj
+                                </button>
                               </td>
                             </tr>
                           ))
@@ -441,15 +584,62 @@ export default function SettingsPage() {
                         <div key={cls.id} className="rounded-xl border border-slate-200 bg-slate-50 p-5">
                           <div className="flex items-center justify-between">
                             <p className="text-sm font-bold text-slate-800">{cls.name}</p>
-                            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                              {cls.studentsCount} uczniów
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
+                                {cls.studentsCount} uczniów
+                              </span>
+                              <button
+                                onClick={() => openEditClass(cls)}
+                                className="cursor-pointer text-blue-600 hover:text-blue-800"
+                              >
+                                Edytuj
+                              </button>
+                            </div>
                           </div>
                           <p className="mt-1 text-sm text-slate-500">Wychowawca: {cls.teacher}</p>
                         </div>
                       ))}
                     </div>
                   )}
+
+                  <div className="mt-8">
+                    <h3 className="text-lg font-bold">Uczniowie</h3>
+                    {loadingStudents ? (
+                      <p className="py-10 text-center text-sm text-slate-400">Ładowanie...</p>
+                    ) : (
+                      <div className="mt-4 overflow-x-auto">
+                        <table className="w-full min-w-[600px] text-left">
+                          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                            <tr>
+                              <th className="px-6 py-3 font-semibold">Uczeń</th>
+                              <th className="px-6 py-3 font-semibold">Klasa</th>
+                              <th className="px-6 py-3 font-semibold">Akcje</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {students.map((student) => (
+                              <tr key={student.id} className="transition hover:bg-slate-50/70">
+                                <td className="px-6 py-4">
+                                  <p className="text-sm font-semibold text-slate-800">{student.name}</p>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <p className="text-sm text-slate-500">{student.className}</p>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <button
+                                    onClick={() => openEditStudent(student)}
+                                    className="cursor-pointer text-blue-600 hover:text-blue-800"
+                                  >
+                                    Edytuj
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -739,6 +929,148 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {showEditUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900">Edytuj użytkownika</h3>
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="text-sm font-medium text-slate-700">Imię i nazwisko</label>
+                <input
+                  type="text"
+                  value={editUserName}
+                  onChange={(e) => setEditUserName(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Email</label>
+                <input
+                  type="email"
+                  value={editUserEmail}
+                  onChange={(e) => setEditUserEmail(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Rola</label>
+                <select
+                  value={editUserRole}
+                  onChange={(e) => setEditUserRole(e.target.value as typeof editUserRole)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                >
+                  <option value="admin">Administrator</option>
+                  <option value="teacher">Nauczyciel</option>
+                  <option value="educator">Wychowawca</option>
+                  <option value="student">Uczeń</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowEditUser(false)}
+                className="flex-1 cursor-pointer rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={saveUser}
+                className="flex-1 cursor-pointer rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900">Edytuj ucznia</h3>
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="text-sm font-medium text-slate-700">Imię i nazwisko</label>
+                <input
+                  type="text"
+                  value={editStudentName}
+                  onChange={(e) => setEditStudentName(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Klasa</label>
+                <select
+                  value={editStudentClassId ?? ""}
+                  onChange={(e) => setEditStudentClassId(Number(e.target.value))}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                >
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowEditStudent(false)}
+                className="flex-1 cursor-pointer rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={saveStudent}
+                className="flex-1 cursor-pointer rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditClass && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900">Edytuj klasę</h3>
+            <div className="mt-4 space-y-4">
+              <div>
+                <label className="text-sm font-medium text-slate-700">Nazwa klasy</label>
+                <input
+                  type="text"
+                  value={editClassName}
+                  onChange={(e) => setEditClassName(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-slate-700">Wychowawca</label>
+                <input
+                  type="text"
+                  value={editClassTeacher}
+                  onChange={(e) => setEditClassTeacher(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button
+                onClick={() => setShowEditClass(false)}
+                className="flex-1 cursor-pointer rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+              >
+                Anuluj
+              </button>
+              <button
+                onClick={saveClass}
+                className="flex-1 cursor-pointer rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Zapisz
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
@@ -754,7 +1086,8 @@ export default function SettingsPage() {
                 Anuluj
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
+                  await signOut();
                   router.push("/sign-in");
                 }}
                 className="flex-1 cursor-pointer rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
