@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import AppShell from "../../../components/AppShell";
 
 type ClassItem = {
   id: number;
@@ -19,36 +17,63 @@ type HistoryRecord = {
   className: string;
   date: string;
   lesson: string;
-  room: string;
+  lessonNumber?: string;
   reason: string;
   exitTime: string;
   returnTime: string;
   duration: number | null;
+  leftAtIso: string;
+  returnedAtIso: string | null;
 };
 
 export default function HistoryPage() {
-  const pathname = usePathname();
-  const router = useRouter();
-
   const [classes, setClasses] = useState<ClassItem[]>([]);
   const [loadingClasses, setLoadingClasses] = useState(true);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selectedClass, setSelectedClass] = useState("Wszystkie");
   const [selectedReason, setSelectedReason] = useState("Wszystkie");
   const [selectedDate, setSelectedDate] = useState("");
-  const [selectedRecord, setSelectedRecord] =
-    useState<HistoryRecord | null>(null);
+  const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(null);
   const [reasons, setReasons] = useState<string[]>([]);
 
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
-  const [correctionRecord, setCorrectionRecord] =
-    useState<HistoryRecord | null>(null);
+  const [correctionRecord, setCorrectionRecord] = useState<HistoryRecord | null>(null);
+  const [savingCorrection, setSavingCorrection] = useState(false);
+  const [correctionError, setCorrectionError] = useState<string | null>(null);
 
   const [correctionReason, setCorrectionReason] = useState("");
   const [correctionExitTime, setCorrectionExitTime] = useState("");
   const [correctionReturnTime, setCorrectionReturnTime] = useState("");
+
+  const loadHistory = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (selectedClass !== "Wszystkie") params.set("class", selectedClass);
+    if (selectedReason !== "Wszystkie") params.set("reason", selectedReason);
+    if (selectedDate) {
+      params.set("from", selectedDate);
+      params.set("to", selectedDate);
+    }
+
+    try {
+      const res = await fetch(`/api/history?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Nie udało się pobrać historii.");
+        setHistory([]);
+        return;
+      }
+      setError(null);
+      setHistory(Array.isArray(data) ? data : []);
+    } catch {
+      setError("Nie udało się pobrać historii.");
+      setHistory([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedClass, selectedReason, selectedDate]);
 
   useEffect(() => {
     fetch("/api/leaves/reasons")
@@ -58,6 +83,8 @@ export default function HistoryPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
     const params = new URLSearchParams();
     if (selectedClass !== "Wszystkie") params.set("class", selectedClass);
     if (selectedReason !== "Wszystkie") params.set("reason", selectedReason);
@@ -65,107 +92,59 @@ export default function HistoryPage() {
       params.set("from", selectedDate);
       params.set("to", selectedDate);
     }
+
     fetch(`/api/history?${params.toString()}`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setHistory(data);
-        } else {
-          console.error("API returned non-array:", data);
+      .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (cancelled) return;
+        if (!ok) {
+          setError(data.error ?? "Nie udało się pobrać historii.");
           setHistory([]);
+          return;
         }
-        setLoading(false);
+        setError(null);
+        setHistory(Array.isArray(data) ? data : []);
       })
       .catch(() => {
-        setHistory([]);
-        setLoading(false);
+        if (!cancelled) {
+          setError("Nie udało się pobrać historii.");
+          setHistory([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [selectedClass, selectedReason, selectedDate]);
 
   useEffect(() => {
-    setLoadingClasses(true);
+    let cancelled = false;
     fetch("/api/classes")
       .then((res) => res.json())
       .then((data: ClassItem[]) => {
-        setClasses(data);
-        setLoadingClasses(false);
+        if (cancelled) return;
+        setClasses(Array.isArray(data) ? data : []);
       })
-      .catch(() => setLoadingClasses(false));
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadingClasses(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
-  const navItems = [
-  {
-    label: "Pulpit",
-    href: "/",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <rect x="3" y="3" width="7" height="7" rx="1" strokeWidth="1.8" />
-        <rect x="14" y="3" width="7" height="7" rx="1" strokeWidth="1.8" />
-        <rect x="3" y="14" width="7" height="7" rx="1" strokeWidth="1.8" />
-        <rect x="14" y="14" width="7" height="7" rx="1" strokeWidth="1.8" />
-      </svg>
-    ),
-  },
-  {
-    label: "Historia",
-    href: "/history",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path
-          d="M4 5h16M4 10h16M4 15h10M4 20h10"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
-  },
-  {
-    label: "Klasy i uczniowie",
-    href: "/classes",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-        <path
-          d="M16 20v-1.5A3.5 3.5 0 0 0 12.5 15h-5A3.5 3.5 0 0 0 4 18.5V20"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-        <circle cx="10" cy="8" r="3" strokeWidth="1.8" />
-        <path
-          d="M16 4.5a3 3 0 0 1 0 6M17 15a3.5 3.5 0 0 1 3 3.5V20"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-        />
-      </svg>
-    ),
-  },
-];
 
   const filteredHistory = useMemo(() => {
     return history.filter((record) => {
       const matchesSearch = record.student
         .toLowerCase()
         .includes(search.toLowerCase());
-
-      const matchesClass =
-        selectedClass === "Wszystkie" ||
-        record.className === selectedClass;
-
-      const matchesReason =
-        selectedReason === "Wszystkie" ||
-        record.reason === selectedReason;
-
-      const matchesDate =
-        selectedDate === "" ||
-        record.date === formatDateForDisplay(selectedDate);
-
-      return (
-        matchesSearch &&
-        matchesClass &&
-        matchesReason &&
-        matchesDate
-      );
+      return matchesSearch;
     });
-  }, [history, search, selectedClass, selectedReason, selectedDate]);
+  }, [history, search]);
 
   const totalMinutes = filteredHistory.reduce(
     (sum, record) => sum + (record.duration ?? 0),
@@ -182,216 +161,59 @@ export default function HistoryPage() {
     setCorrectionReason(record.reason);
     setCorrectionExitTime(record.exitTime);
     setCorrectionReturnTime(record.returnTime);
+    setCorrectionError(null);
     setShowCorrectionModal(true);
   };
 
-  const saveCorrection = () => {
-    if (!correctionRecord) return;
-
-    const duration = calculateDuration(
-      correctionExitTime,
-      correctionReturnTime
-    );
-
-    setHistory((current) =>
-      current.map((record) =>
-        record.id === correctionRecord.id
-          ? {
-              ...record,
-              reason: correctionReason,
-              exitTime: correctionExitTime,
-              returnTime: correctionReturnTime,
-              duration,
-            }
-          : record
-      )
-    );
-
-    setShowCorrectionModal(false);
-    setCorrectionRecord(null);
+  /**
+   * Bug 1: korekta musi trafić do backendu (wcześniej zmieniała tylko stan
+   * lokalny i przepadała po odświeżeniu). Budujemy pełne znaczniki czasu ISO
+   * z daty wyjścia + wpisanej godziny, zachowując oryginalną datę.
+   */
+  const buildTimestamp = (time: string, referenceIso: string): string | null => {
+    if (!time) return null;
+    const [h, m] = time.split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return null;
+    const base = new Date(referenceIso);
+    base.setHours(h, m, 0, 0);
+    return base.toISOString();
   };
 
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const saveCorrection = async () => {
+    if (!correctionRecord) return;
+    setSavingCorrection(true);
+    setCorrectionError(null);
+
+    try {
+      const leftAt = buildTimestamp(correctionExitTime, correctionRecord.leftAtIso);
+      const returnedAt = correctionReturnTime
+        ? buildTimestamp(correctionReturnTime, correctionRecord.leftAtIso)
+        : null;
+
+      const res = await fetch(`/api/leaves/${correctionRecord.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: correctionReason, leftAt, returnedAt }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setCorrectionError(data.error ?? "Nie udało się zapisać korekty.");
+        return;
+      }
+
+      setShowCorrectionModal(false);
+      setCorrectionRecord(null);
+      await loadHistory();
+    } catch {
+      setCorrectionError("Nie udało się zapisać korekty.");
+    } finally {
+      setSavingCorrection(false);
+    }
+  };
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="flex min-h-screen">
-
-        {/* ================= SIDEBAR ================= */}
-
-        <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 flex-col bg-slate-900 text-white lg:flex">
-
-          {/* Logo */}
-
-          <div className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 shadow-lg shadow-blue-600/20">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.8}
-                stroke="currentColor"
-                className="h-6 w-6"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 6.75V19.5m0-12.75a4.5 4.5 0 0 1 4.5-4.5H21v13.5h-4.5a4.5 4.5 0 0 0-4.5 4.5m0-13.5a4.5 4.5 0 0 0-4.5-4.5H3v13.5h4.5a4.5 4.5 0 0 1 4.5 4.5"
-                />
-              </svg>
-            </div>
-
-            <div>
-              <p className="text-sm font-bold">Rejestr Wyjść</p>
-              <p className="text-xs text-slate-400">
-                Panel nauczyciela
-              </p>
-            </div>
-          </div>
-
-          {/* Navigation */}
-
-          <nav className="flex-1 px-3 py-6">
-            <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Menu główne
-            </p>
-
-            <div className="space-y-1">
-              {navItems.map((item) => {
-                const isActive = pathname === item.href;
-
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
-                      isActive
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                        : "text-slate-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <span className="h-5 w-5">
-                      {item.icon}
-                    </span>
-
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-
-            <div className="my-6 h-px bg-white/10" />
-
-            <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Administrator
-            </p>
-
-            <Link
-              href="/settings"
-              className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
-                pathname === "/settings"
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                  : "text-slate-300 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <span className="h-5 w-5">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <circle cx="12" cy="12" r="3.2" strokeWidth="1.8" />
-                  <path
-                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.998 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-
-              Ustawienia
-            </Link>
-          </nav>
-
-          {/* User */}
-
-          <div className="border-t border-white/10 p-4">
-            <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-bold">
-                JK
-              </div>
-
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">
-                  Jan Kowalski
-                </p>
-
-                <p className="text-xs text-slate-400">
-                  Nauczyciel
-                </p>
-              </div>
-
-              <button
-                onClick={() => setShowLogoutConfirm(true)}
-                title="Wyloguj"
-                className="cursor-pointer text-slate-400 transition hover:text-white"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-5 w-5">
-                  <path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H3" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        {/* ================= MAIN ================= */}
-
-        <div className="w-full lg:ml-64">
-
-          {/* TOP BAR */}
-
-          <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
-            <div className="flex h-20 items-center justify-between px-5 sm:px-8">
-
-              <div>
-                <p className="text-sm text-slate-500">
-                  {new Date()
-                    .toLocaleDateString("pl-PL", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })
-                    .replace(/^./, (char) =>
-                      char.toUpperCase()
-                    )}
-                </p>
-
-                <h1 className="mt-0.5 text-xl font-bold text-slate-900">
-                  Historia wyjść
-                </h1>
-              </div>
-
-              <div className="flex items-center gap-3">
-
-                <div className="hidden text-right sm:block">
-                  <p className="text-sm font-semibold">
-                    Jan Kowalski
-                  </p>
-
-                  <p className="text-xs text-slate-400">
-                    Nauczyciel
-                  </p>
-                </div>
-
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-                  JK
-                </div>
-              </div>
-            </div>
-          </header>
-
-          {/* CONTENT */}
-
-          <div className="mx-auto max-w-[1500px] p-5 sm:p-8">
-
+    <AppShell title="Historia wyjść">
             {/* PAGE HEADER */}
 
             <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -660,7 +482,15 @@ export default function HistoryPage() {
                 </span>
               </div>
 
-              {filteredHistory.length === 0 ? (
+              {loading ? (
+                <div className="px-5 py-16 text-center text-sm text-slate-400">
+                  Ładowanie...
+                </div>
+              ) : error ? (
+                <div className="px-5 py-16 text-center text-sm font-semibold text-red-600">
+                  {error}
+                </div>
+              ) : filteredHistory.length === 0 ? (
                 <div className="px-5 py-16 text-center">
                   <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
                     <svg
@@ -776,9 +606,6 @@ export default function HistoryPage() {
                                   {record.lesson}
                                 </p>
 
-                                <p className="text-xs text-slate-400">
-                                  Sala {record.room}
-                                </p>
                               </div>
                             </td>
 
@@ -866,10 +693,6 @@ export default function HistoryPage() {
                             value={record.lesson}
                           />
 
-                          <InfoItem
-                            label="Sala"
-                            value={record.room}
-                          />
 
                           <InfoItem
                             label="Powód"
@@ -910,9 +733,6 @@ export default function HistoryPage() {
               <p>System Rejestracji Wyjść Uczniów</p>
               <p>Panel nauczyciela</p>
             </footer>
-          </div>
-        </div>
-      </div>
 
       {/* ================= DETAILS MODAL ================= */}
 
@@ -958,7 +778,7 @@ export default function HistoryPage() {
 
               <DetailRow
                 label="Lekcja"
-                value={`${selectedRecord.lesson} • sala ${selectedRecord.room}`}
+                value={selectedRecord.lesson}
               />
 
               <DetailRow
@@ -1085,6 +905,12 @@ export default function HistoryPage() {
               </div>
             </div>
 
+            {correctionError && (
+              <div className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+                {correctionError}
+              </div>
+            )}
+
             <div className="mt-6 flex gap-3">
 
               <button
@@ -1099,48 +925,17 @@ export default function HistoryPage() {
 
               <button
                 onClick={saveCorrection}
-                disabled={
-                  !correctionExitTime ||
-                  !correctionReturnTime ||
-                  correctionExitTime >= correctionReturnTime
-                }
+                disabled={savingCorrection}
                 className="flex-1 cursor-pointer rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
               >
-                Zapisz korektę
+                {savingCorrection ? "Zapisywanie..." : "Zapisz korektę"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-slate-900">Wylogowanie</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              Czy na pewno chcesz się wylogować?
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 cursor-pointer rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={() => {
-                  router.push("/sign-in");
-                }}
-                className="flex-1 cursor-pointer rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
-              >
-                Wyloguj
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </main>
+    </AppShell>
   );
 }
 
@@ -1160,25 +955,13 @@ function StatCard({
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
       <div className="flex items-start justify-between">
-
         <div>
-          <p className="text-sm font-medium text-slate-500">
-            {title}
-          </p>
-
-          <p className="mt-2 text-2xl font-bold text-slate-900">
-            {value}
-          </p>
-
-          <p className="mt-1 text-xs text-slate-400">
-            {description}
-          </p>
+          <p className="text-sm font-medium text-slate-500">{title}</p>
+          <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
+          <p className="mt-1 text-xs text-slate-400">{description}</p>
         </div>
-
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
-          <span className="h-5 w-5">
-            {icon}
-          </span>
+          <span className="h-5 w-5">{icon}</span>
         </div>
       </div>
     </div>
@@ -1230,24 +1013,4 @@ function getInitials(name: string) {
     .split(" ")
     .map((part) => part[0])
     .join("");
-}
-
-function formatDateForDisplay(date: string) {
-  const [year, month, day] = date.split("-");
-
-  if (!year || !month || !day) {
-    return "";
-  }
-
-  return `${day}.${month}.${year}`;
-}
-
-function calculateDuration(exitTime: string, returnTime: string) {
-  const [exitHour, exitMinute] = exitTime.split(":").map(Number);
-  const [returnHour, returnMinute] = returnTime.split(":").map(Number);
-
-  const exit = exitHour * 60 + exitMinute;
-  const returned = returnHour * 60 + returnMinute;
-
-  return Math.max(0, returned - exit);
 }

@@ -22,6 +22,20 @@
       "when": 1790789190672,
       "tag": "0002_heavy_puppet_master",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790870682214,
+      "tag": "0003_free_blue_blade",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790871269511,
+      "tag": "0004_breezy_spacker_dave",
+      "breakpoints": true
     }
   ]
 }

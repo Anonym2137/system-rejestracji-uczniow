@@ -1,10 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
-import { useRouter } from "next/navigation";
-import { signOut, useSession } from "../lib/auth-client";
+import AppShell from "../components/AppShell";
 
 type StudentStatus = "W sali" | "Poza salą";
 
@@ -62,17 +59,9 @@ type DashboardData = {
     role?: string;
   };
 
-  todayStats?: {
-    totalExits: number;
-    avgDuration: number;
-  };
 };
 
 export default function MainPage() {
-  const pathname = usePathname();
-  const router = useRouter();
-  const { data: session } = useSession();
-
   const [students, setStudents] = useState<Student[]>([]);
   const [lessonActive, setLessonActive] = useState(false);
   const [lessonId, setLessonId] = useState<string | null>(null);
@@ -87,7 +76,6 @@ export default function MainPage() {
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<number | null>(null);
   const [search, setSearch] = useState("");
-  const [todayStats, setTodayStats] = useState<DashboardData["todayStats"]>(undefined);
   const [allClasses, setAllClasses] = useState<DashboardData["classes"]>([]);
   const [endTime, setEndTime] = useState<string>("");
   const [lessonStartedAt, setLessonStartedAt] = useState<string | null>(null);
@@ -128,9 +116,10 @@ const loadDashboard = async (classIdOverride?: number) => {
     setLessonActive(data.lesson?.isActive ?? false);
     setSubject(data.lesson?.subject ?? "");
     setLessonStartedAt(data.lesson?.startedAt ?? null);
-    setTodayStats(data.todayStats);
+    // Godzina zakończenia = start lekcji + 45 min (zgodnie z auto-zakończeniem lekcji).
+    const lessonStart = data.lesson?.startedAt ? new Date(data.lesson.startedAt) : new Date();
     setEndTime(
-      new Date(Date.now() + 45 * 60000).toLocaleTimeString("pl-PL", {
+      new Date(lessonStart.getTime() + 45 * 60000).toLocaleTimeString("pl-PL", {
         hour: "2-digit",
         minute: "2-digit",
       })
@@ -364,266 +353,21 @@ const toggleLesson = async () => {
     await loadDashboard(newClassId);
   };
 
-  const navItems = [
-    {
-      label: "Pulpit",
-      href: "/",
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <rect x="3" y="3" width="7" height="7" rx="1" strokeWidth="1.8" />
-          <rect x="14" y="3" width="7" height="7" rx="1" strokeWidth="1.8" />
-          <rect x="3" y="14" width="7" height="7" rx="1" strokeWidth="1.8" />
-          <rect x="14" y="14" width="7" height="7" rx="1" strokeWidth="1.8" />
-        </svg>
-      ),
-    },
-    {
-      label: "Historia",
-      href: "/history",
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path
-            d="M4 5h16M4 10h16M4 15h10M4 20h10"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-        </svg>
-      ),
-    },
-    {
-      label: "Klasy i uczniowie",
-      href: "/classes",
-      icon: (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-          <path
-            d="M16 20v-1.5A3.5 3.5 0 0 0 12.5 15h-5A3.5 3.5 0 0 0 4 18.5V20"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-          <circle cx="10" cy="8" r="3" strokeWidth="1.8" />
-          <path
-            d="M16 4.5a3 3 0 0 1 0 6M17 15a3.5 3.5 0 0 1 3 3.5V20"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-        </svg>
-      ),
-    },
-  ];
-
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="flex min-h-screen">
-        {/* ================= SIDEBAR ================= */}
-        <aside className="fixed left-0 top-0 z-30 hidden h-screen w-64 flex-col bg-slate-900 text-white lg:flex">
-          <div className="flex h-20 items-center gap-3 border-b border-white/10 px-6">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 shadow-lg shadow-blue-600/20">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth={1.8}
-                stroke="currentColor"
-                className="h-6 w-6"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M12 6.75V19.5m0-12.75a4.5 4.5 0 0 1 4.5-4.5H21v13.5h-4.5a4.5 4.5 0 0 0-4.5 4.5m0-13.5a4.5 4.5 0 0 0-4.5-4.5H3v13.5h4.5a4.5 4.5 0 0 1 4.5 4.5"
-                />
-              </svg>
-            </div>
-            <div>
-              <p className="text-sm font-bold">Rejestr Wyjść</p>
-              <p className="text-xs text-slate-400">Panel nauczyciela</p>
-            </div>
-          </div>
+    <AppShell title={`Dzień dobry, ${firstName} 👋`}>
+      {error && (
+        <div className="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-600">
+          {error}
+        </div>
+      )}
 
-          <nav className="flex-1 px-3 py-6">
-            <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Menu główne
-            </p>
-
-            <div className="space-y-1">
-              {navItems.map((item) => {
-                const isActive = pathname === item.href;
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
-                      isActive
-                        ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                        : "text-slate-300 hover:bg-white/5 hover:text-white"
-                    }`}
-                  >
-                    <span className="h-5 w-5">{item.icon}</span>
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </div>
-
-            <div className="my-6 h-px bg-white/10" />
-
-            <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              Administrator
-            </p>
-
-            <Link
-              href="/settings"
-              className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-sm transition ${
-                pathname === "/settings"
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-600/20"
-                  : "text-slate-300 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              <span className="h-5 w-5">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <circle cx="12" cy="12" r="3.2" strokeWidth="1.8" />
-                  <path
-                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.998 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-              Ustawienia
-            </Link>
-          </nav>
-
-          <div className="border-t border-white/10 p-4">
-            <div className="flex items-center gap-3 rounded-xl bg-white/5 p-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-sm font-bold">
-                {currentUser?.name?.split(" ").map((n) => n[0]).join("").slice(0, 2) || "?"}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{currentUser?.name || "Użytkownik"}</p>
-                <p className="text-xs text-slate-400">
-                  {currentUser?.role === "admin" ? "Administrator" :
-                   currentUser?.role === "educator" ? "Wychowawca" :
-                   currentUser?.role === "teacher" ? "Nauczyciel" : "Użytkownik"}
-                </p>
-              </div>
-              <button
-                onClick={async () => {
-                  await signOut();
-                  router.push("/sign-in");
-                }}
-                title="Wyloguj"
-                className="cursor-pointer text-slate-400 transition hover:text-white"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" className="h-5 w-5">
-                  <path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H3" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        {/* ================= MAIN ================= */}
-        <div className="w-full lg:ml-64">
-          {/* TOP BAR */}
-          <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
-            <div className="flex h-20 items-center justify-between px-5 sm:px-8">
-              <div>
-                <p className="text-sm text-slate-500">
-                  {new Date()
-                    .toLocaleDateString("pl-PL", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })
-                    .replace(/^./, (char) => char.toUpperCase())}
-                </p>
-                <h1 className="mt-0.5 text-xl font-bold text-slate-900">
-                  Dzień dobry, {firstName} 👋
-                </h1>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <div className="hidden text-right sm:block">
-                  <p className="text-sm font-semibold">{currentUser?.name || "Użytkownik"}</p>
-                  <p className="text-xs text-slate-400">
-                    {currentUser?.role === "admin" ? "Administrator" :
-                     currentUser?.role === "educator" ? "Wychowawca" :
-                     currentUser?.role === "teacher" ? "Nauczyciel" : "Użytkownik"}
-                  </p>
-                </div>
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-bold text-blue-700">
-                  {currentUser?.name?.split(" ").map((n) => n[0]).join("").slice(0, 2) || "?"}
-                </div>
-              </div>
-            </div>
-          </header>
-
-          {/* CONTENT */}
-          <div className="mx-auto max-w-[1500px] p-5 sm:p-8">
-            {/* ================= STATISTICS ================= */}
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                title="Dzisiejsza lekcja"
-                value={className ?? "—"}
-                description={`${subject ?? "—"} • sala —`}
-                icon={
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path
-                      d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5v-15Z"
-                      strokeWidth="1.8"
-                    />
-                  </svg>
-                }
-              />
-
-              <StatCard
-                title="Aktywne wyjścia"
-                value={String(activeExits.length)}
-                description="uczniowie poza salą"
-                icon={
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <circle cx="12" cy="12" r="8.5" strokeWidth="1.8" />
-                    <path d="M12 7v5l3 2" strokeWidth="1.8" strokeLinecap="round" />
-                  </svg>
-                }
-                accent
-              />
-
-              <Link href="/history" className="block cursor-pointer text-left">
-                <StatCard
-                  title="Wyjścia dzisiaj"
-                  value={String(todayStats?.totalExits ?? 0)}
-                  description="łącznie zarejestrowanych"
-                  icon={
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path
-                        d="M4 19V5M4 19h16M8 16v-4M12 16V8M16 16v-7"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  }
-                />
-              </Link>
-
-              <StatCard
-                title="Średni czas"
-                value={`${todayStats?.avgDuration ?? 0} min`}
-                description="średni czas wyjścia"
-                icon={
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <circle cx="12" cy="12" r="8.5" strokeWidth="1.8" />
-                    <path d="M12 7v5l3 2" strokeWidth="1.8" strokeLinecap="round" />
-                  </svg>
-                }
-              />
-            </div>
-
-            {/* ================= CURRENT LESSON ================= */}
+      {loading ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-16 text-center text-sm text-slate-400 shadow-sm">
+          Ładowanie danych...
+        </div>
+      ) : (
+        <>
+      {/* ================= CURRENT LESSON ================= */}
             <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="flex flex-col gap-4 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
                 <div>
@@ -710,10 +454,9 @@ const toggleLesson = async () => {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-4 sm:p-6">
+              <div className="grid grid-cols-2 gap-4 p-5 sm:grid-cols-3 sm:p-6">
                 <LessonInfo label="Klasa" value={className ?? "—"} />
                 <LessonInfo label="Przedmiot" value={subject ?? "—"} />
-                <LessonInfo label="Sala" value="—" />
                 <LessonInfo
                   label="Godzina"
                   value={
@@ -928,9 +671,8 @@ const toggleLesson = async () => {
               <p>System Rejestracji Wyjść Uczniów</p>
               <p>Panel nauczyciela</p>
             </footer>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* ================= EXIT MODAL ================= */}
       {showReasonModal && (
@@ -992,72 +734,11 @@ const toggleLesson = async () => {
           </div>
         </div>
       )}
-
-      {showLogoutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-slate-900">Wylogowanie</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              Czy na pewno chcesz się wylogować?
-            </p>
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 cursor-pointer rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={() => {
-                  router.push("/sign-in");
-                }}
-                className="flex-1 cursor-pointer rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-red-700"
-              >
-                Wyloguj
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </main>
+    </AppShell>
   );
 }
 
 /* ================= COMPONENTS ================= */
-
-function StatCard({
-  title,
-  value,
-  description,
-  icon,
-  accent = false,
-}: {
-  title: string;
-  value: string;
-  description: string;
-  icon: React.ReactNode;
-  accent?: boolean;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-          <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
-          <p className="mt-1 text-xs text-slate-400">{description}</p>
-        </div>
-        <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-            accent ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-600"
-          }`}
-        >
-          <span className="h-5 w-5">{icon}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function LessonInfo({ label, value }: { label: string; value: string }) {
   return (

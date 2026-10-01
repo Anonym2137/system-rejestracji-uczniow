@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core'
 import { sql } from 'drizzle-orm'
 
 // BETTER-AUTH SCHEMAS
@@ -52,15 +52,18 @@ export const verification = sqliteTable('verification', {
 // CLASSES AND STUDENTS
 export const schoolClass = sqliteTable('school_class', {
   id: integer().primaryKey({ autoIncrement: true }),
-  name: text('name').notNull(), 
-educatorId: text('educator_id').references(() => user.id),});
+  name: text('name').notNull(),
+  educatorId: text('educator_id').references(() => user.id),
+});
 
 export const student = sqliteTable('student', {
   id: integer().primaryKey({ autoIncrement: true }),
   userId: text('user_id').references(() => user.id),
   firstName: text('first_name').notNull(),
   lastName: text('last_name').notNull(),
-  classId: integer('class_id').notNull().references(() => schoolClass.id, { onDelete: 'cascade' }),
+  // WF-53: usunięcie klasy jest możliwe tylko gdy nie ma przypisanych uczniów,
+  // dlatego NIE kaskadujemy — baza zablokuje usunięcie klasy z uczniami.
+  classId: integer('class_id').notNull().references(() => schoolClass.id, { onDelete: 'restrict' }),
 });
 
 // LESSONS, LEAVE
@@ -81,7 +84,8 @@ export const studentLeave = sqliteTable('student_leave', {
   id: text('id').primaryKey().$defaultFn(() => sql`lower(hex(randomblob(16)))`),
   studentId: integer('student_id').notNull().references(() => student.id, { onDelete: 'cascade' }),
   lessonSessionId: text('lesson_session_id').notNull().references(() => lessonSession.id, { onDelete: 'cascade' }),
-  reason: text('reason'), // np. "Toaleta", "Higienistka"
+  // WF-20: wyjście rejestrujemy zawsze z powodem — kolumna nie może być pusta.
+  reason: text('reason').notNull().default('Inny'),
   leftAt: integer('left_at', { mode: 'timestamp' })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -92,12 +96,19 @@ export const studentLeave = sqliteTable('student_leave', {
   // Indeksy przyspieszające filtrowanie historii i aktywnych wyjść
   index('student_id_idx').on(table.studentId),
   index('lesson_idx').on(table.lessonSessionId),
+  // WF-24 / RB-01: uczeń może mieć maksymalnie jedno aktywne wyjście
+  // (indeks częściowy — dotyczy tylko wierszy bez zarejestrowanego powrotu).
+  uniqueIndex('student_active_leave_idx')
+    .on(table.studentId)
+    .where(sql`returned_at IS NULL`),
 ]);
 
 export const auditLog = sqliteTable('audit_log', {
   id: text('id').primaryKey().$defaultFn(() => sql`lower(hex(randomblob(16)))`),
   changedBy: text('changed_by').notNull().references(() => user.id), // Kto zmienił
-  leaveId: text('leave_id').notNull().references(() => studentLeave.id), // Co zmienił
+  // Ślad audytowy musi przetrwać usunięcie wyjścia/ucznia, dlatego NIE ma tu
+  // klucza obcego do student_leave — inaczej blokowałby kaskadowe usuwanie.
+  leaveId: text('leave_id').notNull(), // Czego dotyczyła zmiana (historyczny identyfikator)
   action: text('action').notNull(), // np. "UPDATE_RETURN_TIME"
   oldValue: text('old_value'),
   newValue: text('new_value'),

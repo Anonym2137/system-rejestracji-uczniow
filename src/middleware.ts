@@ -4,6 +4,9 @@ import type { NextRequest } from "next/server";
 import { headers } from "next/headers";
 import { auth } from "./lib/auth"; // Ścieżka do Twojego SERWEROWEGO pliku auth (nie auth-client!)
 
+/** Ścieżki dostępne wyłącznie dla administratora. */
+const ADMIN_ONLY_PREFIXES = ["/settings"];
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -20,6 +23,14 @@ export async function middleware(request: NextRequest) {
   // 2. Jeśli użytkownik NIE jest zalogowany i próbuje wejść na jakąkolwiek chronioną stronę
   if (!session && pathname !== "/sign-in") {
     return NextResponse.redirect(new URL("/sign-in", request.url));
+  }
+
+  // 3. Kontrola roli: strony administracyjne tylko dla admina.
+  //    (Bug: wcześniej każdy zalogowany mógł wejść na /settings z adresu URL.)
+  if (session && ADMIN_ONLY_PREFIXES.some((p) => pathname.startsWith(p))) {
+    if (session.user.role !== "admin") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
   }
 
   return NextResponse.next();

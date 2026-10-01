@@ -88,14 +88,17 @@ async function main() {
     
     console.log("🌱 Seedowanie lekcji i wyjść uczniów...");
     
-    // 4. Tworzenie aktywnej lekcji
+    // 4. Tworzenie aktywnej lekcji (świeżej — 5 min temu, żeby nie została
+    //    automatycznie zamknięta przez auto-expire po 45 minutach)
     const activeSessionRes = await db.insert(lessonSession).values({
       id: "session_active_1",
       classId: class1Id,
       teacherId: createdUsers["tomasz.n@szkola.pl"],
       subject: "Matematyka",
+      lessonNumber: "3",
+      startTime: "10:00",
       isActive: true,
-      startedAt: new Date(Date.now() - 30 * 60 * 1000),
+      startedAt: new Date(Date.now() - 5 * 60 * 1000),
     }).returning({ id: lessonSession.id });
     
     // 5. Tworzenie zakończonej lekcji
@@ -104,6 +107,8 @@ async function main() {
       classId: class1Id,
       teacherId: createdUsers["anna.n@szkola.pl"],
       subject: "Język Polski",
+      lessonNumber: "1",
+      startTime: "08:00",
       isActive: false,
       startedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
     }).returning({ id: lessonSession.id });
@@ -147,8 +152,10 @@ async function main() {
     console.log("✅ Baza danych została pomyślnie zasilona!");
   } catch (error) {
     console.error("❌ Wystąpił błąd podczas seedowania:", error);
+    process.exitCode = 1;
   } finally {
-    process.exit(0); // Bezpieczne zamknięcie procesu dopiero po zakończeniu całości
+    // Zamykamy proces po zakończeniu całości; kod wyjścia odzwierciedla błąd.
+    process.exit(process.exitCode ?? 0);
   }
 }
 

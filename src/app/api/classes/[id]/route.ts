@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { auth } from "../../../../lib/auth";
 import { db } from "../../../../db";
-import { schoolClass, user } from "../../../../db/schema";
+import { schoolClass, student, user } from "../../../../db/schema";
 
 export async function PUT(
   request: Request,
@@ -70,6 +70,21 @@ export async function DELETE(
     const existing = await db.select().from(schoolClass).where(eq(schoolClass.id, Number(id))).limit(1);
     if (!existing.length) {
       return NextResponse.json({ error: "Klasa nie istnieje" }, { status: 404 });
+    }
+
+    // WF-53 / RB: klasy nie można usunąć, dopóki ma przypisanych uczniów.
+    const assigned = await db
+      .select({ id: student.id })
+      .from(student)
+      .where(eq(student.classId, Number(id)));
+
+    if (assigned.length > 0) {
+      return NextResponse.json(
+        {
+          error: `Nie można usunąć klasy „${existing[0].name}” — ma przypisanych ${assigned.length} uczniów. Najpierw usuń lub przenieś uczniów.`,
+        },
+        { status: 409 }
+      );
     }
 
     await db.delete(schoolClass).where(eq(schoolClass.id, Number(id)));

@@ -9,12 +9,10 @@ export default function SignInPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoading(true);
 
     try {
       // Logowanie za pomocą klienta Better Auth
@@ -26,15 +24,13 @@ export default function SignInPage() {
 
       if (authError) {
         setError(authError.message || "Niepoprawny email lub hasło.");
-        setLoading(false);
         return;
       }
 
       router.refresh();
       router.push("/");
-    } catch (err) {
+    } catch {
       setError("Wystąpił nieoczekiwany błąd połączenia.");
-      setLoading(false);
     }
   };
 

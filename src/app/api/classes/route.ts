@@ -48,6 +48,7 @@ export async function GET() {
           id: cls.id,
           name: cls.name,
           teacher,
+          educatorId: cls.educatorId,
           studentsCount: Number(count),
         };
       })

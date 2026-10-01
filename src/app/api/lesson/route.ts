@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
-import { eq, and, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { auth } from "../../../lib/auth";
 import { db } from "../../../db";
-import { lessonSession, schoolClass, studentLeave } from "../../../db/schema";
+import { lessonSession, schoolClass } from "../../../db/schema";
+import { closeStaleLessons, endLessonWithReturns } from "../../../lib/lessons";
 
 export async function POST(request: Request) {
   try {
@@ -44,6 +45,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Brak uprawnień do tej klasy" }, { status: 403 });
       }
 
+      // Lekcja jest bytem KLASY: najpierw domykamy przeterminowane sesje tej klasy
+      // (np. pozostawione przez innego nauczyciela), żeby nie blokowały startu.
+      await closeStaleLessons(classIdNum);
+
       const existingActive = await db
         .select()
         .from(lessonSession)
@@ -56,7 +61,16 @@ export async function POST(request: Request) {
         .limit(1);
 
       if (existingActive.length) {
-        return NextResponse.json({ error: "Aktywna lekcja już istnieje" }, { status: 409 });
+        const startedAt = new Date(existingActive[0].startedAt).toLocaleTimeString("pl-PL", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return NextResponse.json(
+          {
+            error: `W klasie ${cls[0].name} trwa już lekcja (rozpoczęta o ${startedAt}). Zakończ ją przed rozpoczęciem nowej.`,
+          },
+          { status: 409 }
+        );
       }
 
       const [lesson] = await db
@@ -95,11 +109,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Brak uprawnień" }, { status: 403 });
       }
 
+      // Bug 8: kończymy lekcję i automatycznie rejestrujemy powrót uczniów,
+      // którzy nie zdążyli wrócić przed jej zakończeniem.
+      await endLessonWithReturns(lid);
+
       const [updated] = await db
-        .update(lessonSession)
-        .set({ isActive: false })
+        .select()
+        .from(lessonSession)
         .where(eq(lessonSession.id, lid))
-        .returning();
+        .limit(1);
 
       return NextResponse.json({ success: true, lesson: updated });
     }
