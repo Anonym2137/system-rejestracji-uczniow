@@ -1,3 +1,4 @@
+import { readJsonObject, clientErrorResponse } from "../../../lib/api-errors";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
@@ -53,6 +54,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(data);
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
   }
@@ -65,12 +68,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body = await readJsonObject(request);
     const { firstName, lastName, classId } = body as {
       firstName?: string;
       lastName?: string;
       classId?: number;
     };
+
+    if ((firstName !== undefined && typeof firstName !== "string") ||
+        (lastName !== undefined && typeof lastName !== "string") ||
+        (classId !== undefined && (!Number.isSafeInteger(classId) || classId <= 0))) {
+      return NextResponse.json({ error: "Nieprawidłowe dane ucznia" }, { status: 400 });
+    }
 
     const first = (firstName ?? "").trim();
     const last = (lastName ?? "").trim();
@@ -123,6 +132,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, student: newStudent }, { status: 201 });
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
   }

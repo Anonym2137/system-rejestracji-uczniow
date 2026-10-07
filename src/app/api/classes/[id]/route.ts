@@ -1,5 +1,5 @@
+import { readJsonObject, clientErrorResponse } from "../../../../lib/api-errors";
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { auth } from "../../../../lib/auth";
 import { db } from "../../../../db";
@@ -11,7 +11,7 @@ export async function PUT(
 ) {
   try {
     const { id } = await context.params;
-    const session = await auth.api.getSession({ headers: await headers() });
+    const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) {
       return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
     }
@@ -19,10 +19,10 @@ export async function PUT(
       return NextResponse.json({ error: "Brak uprawnień" }, { status: 403 });
     }
 
-    const body = await request.json();
+    const body = await readJsonObject(request);
     const { name, educatorId } = body as {
       name?: string;
-      educatorId?: string;
+      educatorId?: string | null;
     };
 
     const existing = await db.select().from(schoolClass).where(eq(schoolClass.id, Number(id))).limit(1);
@@ -30,7 +30,12 @@ export async function PUT(
       return NextResponse.json({ error: "Klasa nie istnieje" }, { status: 404 });
     }
 
-    if (educatorId !== undefined) {
+    if ((name !== undefined && (typeof name !== "string" || !name.trim())) ||
+        (educatorId !== undefined && educatorId !== null && (typeof educatorId !== "string" || !educatorId))) {
+      return NextResponse.json({ error: "Nieprawidłowe dane klasy" }, { status: 400 });
+    }
+
+    if (educatorId !== undefined && educatorId !== null) {
       const educator = await db.select().from(user).where(eq(user.id, educatorId)).limit(1);
       if (!educator.length) {
         return NextResponse.json({ error: "Wychowawca nie istnieje" }, { status: 404 });
@@ -48,6 +53,8 @@ export async function PUT(
 
     return NextResponse.json({ success: true, class: updated });
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
   }
@@ -59,7 +66,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await context.params;
-    const session = await auth.api.getSession({ headers: await headers() });
+    const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) {
       return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
     }
@@ -91,6 +98,8 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
   }

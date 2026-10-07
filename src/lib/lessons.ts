@@ -50,18 +50,15 @@ export async function closeStaleLessons(classId?: number): Promise<number> {
 export async function endLessonWithReturns(lessonId: string): Promise<void> {
   const now = new Date();
 
-  await db
-    .update(studentLeave)
-    .set({ returnedAt: now })
-    .where(
-      and(
-        eq(studentLeave.lessonSessionId, lessonId),
-        isNull(studentLeave.returnedAt)
-      )
-    );
+  await db.transaction(async (tx) => {
+    await tx
+      .update(studentLeave)
+      .set({ returnedAt: now })
+      .where(and(eq(studentLeave.lessonSessionId, lessonId), isNull(studentLeave.returnedAt)));
 
-  await db
-    .update(lessonSession)
-    .set({ isActive: false })
-    .where(eq(lessonSession.id, lessonId));
+    await tx
+      .update(lessonSession)
+      .set({ isActive: false })
+      .where(eq(lessonSession.id, lessonId));
+  });
 }

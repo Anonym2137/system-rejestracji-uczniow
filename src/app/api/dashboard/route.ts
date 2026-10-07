@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
-import { and, eq, gte, isNull, lte } from "drizzle-orm";
+import { and, eq, gte, isNull, lt } from "drizzle-orm";
 
 import { auth } from "../../../lib/auth";
 import { db } from "../../../db";
@@ -15,7 +14,7 @@ import { closeStaleLessons } from "../../../lib/lessons";
 export async function GET(request: Request) {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: request.headers,
     });
 
     if (!session?.user) {
@@ -109,26 +108,19 @@ export async function GET(request: Request) {
     // zarejestrowanych dzisiaj, a nie tylko z bieżącej (aktywnej) lekcji.
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setDate(todayEnd.getDate() + 1);
 
-    const classStudentIds = students.map((s) => s.id);
-
-    let todayLeaves: typeof studentLeave.$inferSelect[] = [];
-    if (classStudentIds.length > 0) {
-      todayLeaves = await db
-        .select()
-        .from(studentLeave)
-        .where(
-          and(
-            gte(studentLeave.leftAt, todayStart),
-            lte(studentLeave.leftAt, todayEnd)
-          )
-        );
-    }
-
-    const todayExits = todayLeaves.filter((l) =>
-      classStudentIds.includes(l.studentId)
-    );
+    const todayRows = await db
+      .select({ leave: studentLeave })
+      .from(studentLeave)
+      .innerJoin(lessonSession, eq(studentLeave.lessonSessionId, lessonSession.id))
+      .where(and(
+        eq(lessonSession.classId, currentClass.id),
+        gte(studentLeave.leftAt, todayStart),
+        lt(studentLeave.leftAt, todayEnd)
+      ));
+    const todayExits = todayRows.map((row) => row.leave);
 
     const closedToday = todayExits.filter((l) => l.returnedAt);
     const sumMinutes = closedToday.reduce((acc, l) => {

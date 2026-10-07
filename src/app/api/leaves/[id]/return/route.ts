@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { auth } from "../../../../../lib/auth";
 import { db } from "../../../../../db";
-import { studentLeave, lessonSession, auditLog } from "../../../../../db/schema";
+import { studentLeave, lessonSession, schoolClass, auditLog } from "../../../../../db/schema";
 import { sql } from "drizzle-orm";
 
 export async function PATCH(
@@ -12,7 +11,7 @@ export async function PATCH(
 ) {
   try {
     const { id: leaveId } = await context.params;
-    const session = await auth.api.getSession({ headers: await headers() });
+    const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) {
       return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
     }
@@ -45,26 +44,37 @@ export async function PATCH(
       return NextResponse.json({ error: "Brak aktywnej lekcji" }, { status: 400 });
     }
 
-    if (lesson[0].teacherId !== userId && session.user.role !== "admin") {
+    const [cls] = await db.select().from(schoolClass)
+      .where(eq(schoolClass.id, lesson[0].classId)).limit(1);
+    if (lesson[0].teacherId !== userId && cls?.educatorId !== userId && session.user.role !== "admin") {
       return NextResponse.json({ error: "Brak uprawnień" }, { status: 403 });
     }
 
     const now = new Date();
-    const [updated] = await db
-      .update(studentLeave)
-      .set({ returnedAt: now })
-      .where(eq(studentLeave.id, leaveId))
-      .returning();
+    const updated = await db.transaction(async (tx) => {
+      const [leave] = await tx
+        .update(studentLeave)
+        .set({ returnedAt: now })
+        .where(and(eq(studentLeave.id, leaveId), isNull(studentLeave.returnedAt)))
+        .returning();
 
-    await db.insert(auditLog).values({
-      id: sql`lower(hex(randomblob(16)))`,
-      changedBy: userId,
-      leaveId,
-      action: "UPDATE_RETURN_TIME",
-      oldValue: null,
-      newValue: now.toISOString(),
-      changedAt: now,
+      if (!leave) return null;
+
+      await tx.insert(auditLog).values({
+        id: sql`lower(hex(randomblob(16)))`,
+        changedBy: userId,
+        leaveId,
+        action: "UPDATE_RETURN_TIME",
+        oldValue: null,
+        newValue: now.toISOString(),
+        changedAt: now,
+      });
+      return leave;
     });
+
+    if (!updated) {
+      return NextResponse.json({ error: "Uczeń już wrócił" }, { status: 409 });
+    }
 
     return NextResponse.json({ success: true, leave: updated });
   } catch (error) {

@@ -308,7 +308,7 @@ const toggleLesson = async () => {
         throw new Error("Nie udało się zakończyć lekcji");
       }
 
-      setLessonActive(false);
+      await loadDashboard(classId ?? undefined);
       return;
     }
 
@@ -335,8 +335,7 @@ const toggleLesson = async () => {
         );
       }
 
-      setLessonId(data.lesson.id);
-      setLessonActive(true);
+      await loadDashboard(classId);
     }
   } catch (error) {
     console.error(error);

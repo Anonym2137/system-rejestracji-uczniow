@@ -1,7 +1,6 @@
 // middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { headers } from "next/headers";
 import { auth } from "./lib/auth"; // Ścieżka do Twojego SERWEROWEGO pliku auth (nie auth-client!)
 
 /** Ścieżki dostępne wyłącznie dla administratora. */
@@ -12,7 +11,7 @@ export async function middleware(request: NextRequest) {
 
   // Bezpieczna weryfikacja sesji w bazie danych przy użyciu serwerowego API Better-Auth
   const session = await auth.api.getSession({
-    headers: await headers(),
+    headers: request.headers,
   });
 
   // 1. Jeśli użytkownik JEST zalogowany i próbuje wejść na /sign-in, cofnij go na stronę główną
@@ -21,6 +20,10 @@ export async function middleware(request: NextRequest) {
   }
 
   // 2. Jeśli użytkownik NIE jest zalogowany i próbuje wejść na jakąkolwiek chronioną stronę
+  if (!session && pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
+  }
+
   if (!session && pathname !== "/sign-in") {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }

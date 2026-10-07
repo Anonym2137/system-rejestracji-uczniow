@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { and, eq, gte, lte, type SQL } from "drizzle-orm";
 import { auth } from "../../../lib/auth";
 import { db } from "../../../db";
@@ -7,7 +6,7 @@ import { studentLeave, student, schoolClass, lessonSession } from "../../../db/s
 
 export async function GET(request: Request) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
+    const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) {
       return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
     }
@@ -36,12 +35,18 @@ export async function GET(request: Request) {
 
     if (fromDate) {
       const from = new Date(fromDate);
+      if (Number.isNaN(from.getTime())) {
+        return NextResponse.json({ error: "Nieprawidłowa data początkowa" }, { status: 400 });
+      }
       from.setHours(0, 0, 0, 0);
       conditions.push(gte(studentLeave.leftAt, from));
     }
 
     if (toDate) {
       const to = new Date(toDate);
+      if (Number.isNaN(to.getTime())) {
+        return NextResponse.json({ error: "Nieprawidłowa data końcowa" }, { status: 400 });
+      }
       to.setHours(23, 59, 59, 999);
       conditions.push(lte(studentLeave.leftAt, to));
     }
@@ -55,8 +60,8 @@ export async function GET(request: Request) {
       })
       .from(studentLeave)
       .innerJoin(student, eq(studentLeave.studentId, student.id))
-      .innerJoin(schoolClass, eq(student.classId, schoolClass.id))
       .innerJoin(lessonSession, eq(studentLeave.lessonSessionId, lessonSession.id))
+      .innerJoin(schoolClass, eq(lessonSession.classId, schoolClass.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined);
 
     const data = rows.map((r) => {

@@ -1,5 +1,5 @@
+import { readJsonObject, clientErrorResponse } from "../../../../lib/api-errors";
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { eq, sql } from "drizzle-orm";
 import { auth } from "../../../../lib/auth";
 import { db } from "../../../../db";
@@ -21,12 +21,12 @@ export async function PATCH(
 ) {
   try {
     const { id: leaveId } = await context.params;
-    const session = await auth.api.getSession({ headers: await headers() });
+    const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) {
       return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body = await readJsonObject(request);
     const { reason, leftAt, returnedAt } = body as {
       reason?: string;
       leftAt?: string;
@@ -37,6 +37,7 @@ export async function PATCH(
       .select({
         leave: studentLeave,
         cls: schoolClass,
+        lesson: lessonSession,
       })
       .from(studentLeave)
       .innerJoin(lessonSession, eq(studentLeave.lessonSessionId, lessonSession.id))
@@ -58,7 +59,12 @@ export async function PATCH(
       return NextResponse.json({ error: "Brak uprawnień" }, { status: 403 });
     }
 
-    const newReason = reason !== undefined ? String(reason).trim() : record.reason;
+    if ((reason !== undefined && typeof reason !== "string") ||
+        (leftAt !== undefined && (typeof leftAt !== "string" || !leftAt)) ||
+        (returnedAt !== undefined && returnedAt !== null && typeof returnedAt !== "string")) {
+      return NextResponse.json({ error: "Nieprawidłowe dane korekty" }, { status: 400 });
+    }
+    const newReason = reason !== undefined ? reason.trim() : record.reason;
     if (!newReason) {
       return NextResponse.json({ error: "Powód nie może być pusty" }, { status: 400 });
     }
@@ -88,32 +94,42 @@ export async function PATCH(
       );
     }
 
-    const [updated] = await db
-      .update(studentLeave)
-      .set({ reason: newReason, leftAt: newLeftAt, returnedAt: newReturnedAt })
-      .where(eq(studentLeave.id, leaveId))
-      .returning();
+    if (!newReturnedAt && !rows[0].lesson.isActive) {
+      return NextResponse.json({ error: "Nie można otworzyć wyjścia z zakończonej lekcji" }, { status: 400 });
+    }
 
-    await db.insert(auditLog).values({
-      id: sql`lower(hex(randomblob(16)))`,
-      changedBy: session.user.id,
-      leaveId,
-      action: "UPDATE_LEAVE",
-      oldValue: JSON.stringify({
-        reason: record.reason,
-        leftAt: new Date(record.leftAt).toISOString(),
-        returnedAt: record.returnedAt ? new Date(record.returnedAt).toISOString() : null,
-      }),
-      newValue: JSON.stringify({
-        reason: updated.reason,
-        leftAt: new Date(updated.leftAt).toISOString(),
-        returnedAt: updated.returnedAt ? new Date(updated.returnedAt).toISOString() : null,
-      }),
-      changedAt: new Date(),
+    const updated = await db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(studentLeave)
+        .set({ reason: newReason, leftAt: newLeftAt, returnedAt: newReturnedAt })
+        .where(eq(studentLeave.id, leaveId))
+        .returning();
+
+      await tx.insert(auditLog).values({
+        id: sql`lower(hex(randomblob(16)))`,
+        changedBy: session.user.id,
+        leaveId,
+        action: "UPDATE_LEAVE",
+        oldValue: JSON.stringify({
+          reason: record.reason,
+          leftAt: new Date(record.leftAt).toISOString(),
+          returnedAt: record.returnedAt ? new Date(record.returnedAt).toISOString() : null,
+        }),
+        newValue: JSON.stringify({
+          reason: updated.reason,
+          leftAt: new Date(updated.leftAt).toISOString(),
+          returnedAt: updated.returnedAt ? new Date(updated.returnedAt).toISOString() : null,
+        }),
+        changedAt: new Date(),
+      });
+
+      return updated;
     });
 
     return NextResponse.json({ success: true, leave: updated });
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
     return NextResponse.json(
       { error: "Nie udało się zapisać korekty" },

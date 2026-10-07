@@ -116,3 +116,9 @@ chore: dodaj skrypty db:generate/db:migrate
 - Migracje: `npx drizzle-kit generate`, `npx drizzle-kit migrate`
 - Studio DB: `npx drizzle-kit studio`
 - Seed: `npm run db:seed`
+
+## Regression tests
+
+Run `npm test` to check authentication roles, class data isolation, lesson
+permissions, and transaction rollback. Tests apply migrations to a temporary
+SQLite database and do not use or modify `.env` or the development database.

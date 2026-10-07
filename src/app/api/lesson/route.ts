@@ -1,5 +1,5 @@
+import { readJsonObject, clientErrorResponse } from "../../../lib/api-errors";
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { and, eq } from "drizzle-orm";
 import { auth } from "../../../lib/auth";
 import { db } from "../../../db";
@@ -8,12 +8,12 @@ import { closeStaleLessons, endLessonWithReturns } from "../../../lib/lessons";
 
 export async function POST(request: Request) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
+    const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) {
       return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body = await readJsonObject(request);
     const { action, classId, lessonId, subject, lessonNumber, startTime } = body as {
       action: "start" | "stop";
       classId?: number | string;
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
     if (action === "start") {
       const classIdNum = Number(classId);
-      if (!classIdNum) {
+      if (!Number.isSafeInteger(classIdNum) || classIdNum <= 0) {
         return NextResponse.json({ error: "Brak classId" }, { status: 400 });
       }
 
@@ -105,7 +105,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Aktywnej lekcji o tym ID nie ma" }, { status: 404 });
       }
 
-      if (lesson[0].teacherId !== userId && session.user.role !== "admin") {
+      const [cls] = await db.select().from(schoolClass)
+        .where(eq(schoolClass.id, lesson[0].classId)).limit(1);
+      if (lesson[0].teacherId !== userId && cls?.educatorId !== userId && session.user.role !== "admin") {
         return NextResponse.json({ error: "Brak uprawnień" }, { status: 403 });
       }
 
@@ -124,6 +126,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
     return NextResponse.json({ error: "Nie udało się zmienić statusu lekcji" }, { status: 500 });
   }

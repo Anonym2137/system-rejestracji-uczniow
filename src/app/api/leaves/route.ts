@@ -1,8 +1,9 @@
+import { readJsonObject, clientErrorResponse } from "../../../lib/api-errors";
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { auth } from "../../../lib/auth";
+import { closeStaleLessons } from "../../../lib/lessons";
 import { db } from "../../../db";
 import {
   student,
@@ -14,7 +15,7 @@ import {
 export async function POST(request: Request) {
   try {
     const session = await auth.api.getSession({
-      headers: await headers(),
+      headers: request.headers,
     });
 
     if (!session?.user) {
@@ -24,12 +25,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const body = await request.json();
+    const body = await readJsonObject(request);
 
     const studentId = Number(body.studentId);
-    const reason = String(body.reason ?? "");
+    const reason = typeof body.reason === "string" ? body.reason.trim() : "";
 
-    if (!studentId || !reason) {
+    if (!Number.isSafeInteger(studentId) || studentId <= 0 || !reason) {
       return NextResponse.json(
         { error: "Brak studentId lub reason" },
         { status: 400 }
@@ -72,13 +73,14 @@ export async function POST(request: Request) {
       );
     }
 
+    await closeStaleLessons(record.schoolClass.id);
+
     const lessons = await db
       .select()
       .from(lessonSession)
       .where(
         and(
           eq(lessonSession.classId, record.schoolClass.id),
-          eq(lessonSession.teacherId, userId),
           eq(lessonSession.isActive, true)
         )
       )
@@ -127,6 +129,8 @@ export async function POST(request: Request) {
       leave,
     });
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
 
     return NextResponse.json(

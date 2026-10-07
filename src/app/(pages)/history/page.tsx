@@ -78,7 +78,7 @@ export default function HistoryPage() {
   useEffect(() => {
     fetch("/api/leaves/reasons")
       .then((res) => res.json())
-      .then((data: string[]) => setReasons(["Wszystkie", ...data]))
+      .then((data: string[]) => setReasons(["Wszystkie", ...(Array.isArray(data) ? data : [])]))
       .catch(() => {});
   }, []);
 
@@ -146,14 +146,15 @@ export default function HistoryPage() {
     });
   }, [history, search]);
 
-  const totalMinutes = filteredHistory.reduce(
+  const completedHistory = filteredHistory.filter((record) => record.duration !== null);
+  const totalMinutes = completedHistory.reduce(
     (sum, record) => sum + (record.duration ?? 0),
     0
   );
 
   const averageDuration =
-    filteredHistory.length > 0
-      ? Math.round(totalMinutes / filteredHistory.length)
+    completedHistory.length > 0
+      ? Math.round(totalMinutes / completedHistory.length)
       : 0;
 
   const openCorrection = (record: HistoryRecord) => {
@@ -187,7 +188,7 @@ export default function HistoryPage() {
     try {
       const leftAt = buildTimestamp(correctionExitTime, correctionRecord.leftAtIso);
       const returnedAt = correctionReturnTime
-        ? buildTimestamp(correctionReturnTime, correctionRecord.leftAtIso)
+        ? buildTimestamp(correctionReturnTime, correctionRecord.returnedAtIso ?? correctionRecord.leftAtIso)
         : null;
 
       const res = await fetch(`/api/leaves/${correctionRecord.id}`, {

@@ -19,6 +19,7 @@ type ClassItem = {
   name: string;
   studentsCount: number;
   teacher: string;
+  educatorId: string | null;
 };
 
 type StudentItem = {
@@ -58,7 +59,7 @@ export default function SettingsPage() {
   const [showEditClass, setShowEditClass] = useState(false);
   const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
   const [editClassName, setEditClassName] = useState("");
-  const [editClassTeacher, setEditClassTeacher] = useState("");
+  const [editClassEducatorId, setEditClassEducatorId] = useState("");
   const [showAddStudent, setShowAddStudent] = useState(false);
   const [showEditStudent, setShowEditStudent] = useState(false);
   const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
@@ -174,7 +175,7 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Nie udało się dodać klasy");
-      setClasses((prev) => [...prev, { ...data.class, studentsCount: 0, teacher: "—" }]);
+      setClasses((prev) => [...prev, { ...data.class, studentsCount: 0, teacher: users?.find((u) => u.id === data.class.educatorId)?.name ?? "—" }]);
       setNewClassName("");
       setNewClassEducatorId("");
       setShowAddClass(false);
@@ -186,7 +187,7 @@ export default function SettingsPage() {
   const openEditClass = (cls: ClassItem) => {
     setEditingClass(cls);
     setEditClassName(cls.name);
-    setEditClassTeacher(cls.teacher);
+    setEditClassEducatorId(cls.educatorId ?? "");
     setShowEditClass(true);
   };
 
@@ -198,12 +199,14 @@ export default function SettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: editClassName,
-          educatorId: editClassTeacher || undefined,
+          educatorId: editClassEducatorId || null,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Nie udało się zaktualizować klasy");
-      setClasses((prev) => prev.map((c) => c.id === editingClass.id ? data.class : c));
+      setClasses((prev) => prev.map((c) => c.id === editingClass.id
+        ? { ...c, ...data.class, teacher: users?.find((u) => u.id === data.class.educatorId)?.name ?? "—" }
+        : c));
       setShowEditClass(false);
     } catch (err) {
       alert(err instanceof Error ? err.message : "Błąd");
@@ -821,12 +824,16 @@ export default function SettingsPage() {
               </div>
               <div>
                 <label className="text-sm font-medium text-slate-700">Wychowawca</label>
-                <input
-                  type="text"
-                  value={editClassTeacher}
-                  onChange={(e) => setEditClassTeacher(e.target.value)}
+                <select
+                  value={editClassEducatorId}
+                  onChange={(e) => setEditClassEducatorId(e.target.value)}
                   className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
+                >
+                  <option value="">— Bez wychowawcy —</option>
+                  {users?.filter((u) => u.role === "teacher" || u.role === "educator" || u.id === editingClass?.educatorId).map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div className="mt-6 flex gap-3">

@@ -1,13 +1,14 @@
+import { readJsonObject, clientErrorResponse } from "../../../lib/api-errors";
 import { NextResponse } from "next/server";
-import { headers } from "next/headers";
 import { eq } from "drizzle-orm";
 import { auth } from "../../../lib/auth";
 import { db } from "../../../db";
+import { isUserRole } from "../../../lib/roles";
 import { user } from "../../../db/schema";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
+    const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) {
       return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
     }
@@ -29,6 +30,8 @@ export async function GET() {
 
     return NextResponse.json(users);
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
   }
@@ -36,7 +39,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const session = await auth.api.getSession({ headers: await headers() });
+    const session = await auth.api.getSession({ headers: request.headers });
     if (!session?.user) {
       return NextResponse.json({ error: "Nie jesteś zalogowany" }, { status: 401 });
     }
@@ -44,7 +47,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Brak uprawnień" }, { status: 403 });
     }
 
-    const body = await request.json();
+    const body = await readJsonObject(request);
     const { email, password, name, role } = body as {
       email: string;
       password: string;
@@ -52,7 +55,7 @@ export async function POST(request: Request) {
       role: "admin" | "teacher" | "educator" | "student";
     };
 
-    if (!email || !password || !name || !role) {
+    if (typeof email !== "string" || typeof password !== "string" || typeof name !== "string" || !name.trim() || !isUserRole(role)) {
       return NextResponse.json({ error: "Brak wymaganych pól" }, { status: 400 });
     }
 
@@ -69,10 +72,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Nie udało się utworzyć użytkownika" }, { status: 500 });
     }
 
-    await db.update(user).set({ role }).where(eq(user.id, newUser.user.id));
+    const [createdUser] = await db.update(user).set({ role }).where(eq(user.id, newUser.user.id)).returning();
 
-    return NextResponse.json({ success: true, user: newUser.user }, { status: 201 });
+    return NextResponse.json({ success: true, user: createdUser }, { status: 201 });
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
   }

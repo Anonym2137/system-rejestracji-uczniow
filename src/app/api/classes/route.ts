@@ -1,3 +1,4 @@
+import { readJsonObject, clientErrorResponse } from "../../../lib/api-errors";
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { eq, sql } from "drizzle-orm";
@@ -56,6 +57,8 @@ export async function GET() {
 
     return NextResponse.json(classesWithCount);
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
   }
@@ -71,7 +74,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Brak uprawnień" }, { status: 403 });
     }
 
-    const body = await request.json();
+    const body = await readJsonObject(request);
     const { name, educatorId } = body as { name: string; educatorId?: string };
 
     if (!name) {
@@ -85,6 +88,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, class: newClass }, { status: 201 });
   } catch (error) {
+    const clientError = clientErrorResponse(error);
+    if (clientError) return clientError;
     console.error(error);
     return NextResponse.json({ error: "Błąd serwera" }, { status: 500 });
   }
